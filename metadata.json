@@ -1,0 +1,7 @@
+{
+  "name": "Relaxx Clinic AI Diagnostics",
+  "description": "Ultra-modern cyber-medical facial analysis tool using MediaPipe Face Mesh and Gemini AI for advanced aesthetic diagnostics.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
