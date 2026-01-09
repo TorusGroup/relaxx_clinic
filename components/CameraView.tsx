@@ -146,9 +146,14 @@ const CameraView: React.FC<Props> = ({ onMetricsUpdate }) => {
         if (videoRef.current && active) {
           videoRef.current.srcObject = stream;
           videoRef.current.onloadedmetadata = () => {
-            videoRef.current?.play();
-            setIsLoaded(true);
-            processVideo();
+            if (videoRef.current && canvasRef.current) {
+              videoRef.current.play();
+              // SYNC CANVAS WITH VIDEO SOURCE
+              canvasRef.current.width = videoRef.current.videoWidth;
+              canvasRef.current.height = videoRef.current.videoHeight;
+              setIsLoaded(true);
+              processVideo();
+            }
           };
         }
       } catch (err) {
@@ -189,8 +194,6 @@ const CameraView: React.FC<Props> = ({ onMetricsUpdate }) => {
         <canvas
           ref={canvasRef}
           className="absolute inset-0 w-full h-full object-cover md:rounded-[40px] pointer-events-none"
-          width={1280}
-          height={720}
         />
 
         {/* Mirror Guide Overlay */}

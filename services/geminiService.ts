@@ -21,33 +21,41 @@ export const generateClinicalReport = async (history: TelemetryData[]): Promise<
 
     const prompt = `
       ATUAÇÃO: Especialista em Bioestética Orofacial e Cadeias Musculares (Conceito Relaxx).
+      OBJETIVO: Gerar uma PRÉ-AVALIAÇÃO BIOMECÂNICA (Triagem). NÃO É UM DIAGNÓSTICO MÉDICO FECHADO.
+
+      DADOS BIOMÉTRICOS EXATOS (Baseie sua análise APENAS nestes números):
+      - Abertura Máxima: ${maxOpening.toFixed(2)}mm
+      - Desvio Lateral: ${avgDeviation.toFixed(2)}mm
       
-      DADOS BIOMÉTRICOS (VISÃO COMPUTACIONAL):
-      - Abertura Máxima (Amplitude): ${maxOpening.toFixed(2)}mm
-      - Desvio Lateral Médio (Instabilidade): ${avgDeviation.toFixed(2)}mm
-      - Índice de Estabilidade Muscular: ${stabilityIndex.toFixed(1)}%
+      REGRAS DE INTERPRETAÇÃO (Siga estritamente):
+      1. Se Abertura < 40mm: Classificar como "Limitação de Amplitude".
+      2. Se Abertura > 55mm: Classificar como "Hipermobilidade/Laxidão".
+      3. Se Abertura entre 40-55mm: Classificar como "Amplitude Funcional Normal".
       
-      DIRETRIZES DE MARCA (RELAXX CLINIC):
-      - O corpo é uma unidade conectada. A mandíbula (ATM) é o "dominó número 1".
-      - DTM causa dores em cadeia (pescoço, ombros, lombar).
-      - Tom de voz: Científico, Futurista, Direto.
-      
-      GERAR LAUDO ESTRUTURADO:
-      # 🧬 BIO-ANÁLISE DIGITAL
+      4. Se Desvio < 3mm: Classificar como "Padrão de Estabilidade Preservado". 
+      5. Se Desvio > 3mm: Classificar como "Assimetria de Movimento Detectada".
+
+      DIRETRIZES ÉTICAS E DE TOM:
+      - Seja objetivo e técnico. SEM emojis excessivos ou linguagem infantil.
+      - NÃO inicie com frases como "Aqui está seu relatório" ou "Como IA...". Apenas entregue o laudo.
+      - Se os números estiverem normais (Regras 3 e 4), PARABENIZE a saúde funcional e sugira manutenção preventiva. NÃO INVENTE PROBLEMAS.
+      - Se houver desvios, explique a biomecânica (Efeito Dominó) e direcione para "Anamnese Clínica Detalhada" com um especialista, não para venda direta.
+
+      ESTRUTURA DE SAÍDA (MARKDOWN):
+      # 🧬 BIO-ANÁLISE DIGITAL (Triagem)
       
       ## 1. INTEGRIDADE DA ATM
-      (Analise a amplitude. Se < 40mm, alertar sobre limitação funcional. Se > 55mm, hipermobilidade).
+      [Sua análise baseada EXCLUSIVAMENTE nas regras de Abertura acima]
       
       ## 2. DINÂMICA DE MOVIMENTO
-      (Analise o desvio. Se > 3mm, explicar como isso sobrecarrega o Nervo Trigêmeo e gera tensão cervical).
+      [Sua análise baseada EXCLUSIVAMENTE nas regras de Desvio acima]
       
-      ## 3. CONEXÃO POSTURAL (EFEITO DOMINÓ)
-      (Explique que a assimetria detectada não para na boca. Pode ser a causa de dores de cabeça ou tensão nos ombros relatada pelo paciente).
+      ## 3. CORRELAÇÃO POSTURAL
+      [Explique brevemente o conceito de cadeias musculares. Se houve desvio, cite possível tensão cervical. Se não, cite o equilíbrio do sistema.]
       
-      ## 4. PLANO DE AÇÃO
-      (Recomende Agendamento de Protocolo Relaxx para recalibração oclusal com Placa Relaxx).
-      
-      Use emojis médicos sutis e formatação Markdown limpa.
+      ## 4. PRÓXIMOS PASSOS
+      [Se houver alertas: Recomendar "Agendamento de Consulta para Avaliação Clínica".]
+      [Se normal: Recomendar "Check-up Preventivo Anual".]
     `;
 
     const result = await model.generateContent(prompt);
