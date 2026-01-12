@@ -1,26 +1,40 @@
-
-import React, { useRef, useEffect, useState, useCallback } from 'react';
+import React, { useRef, useEffect, useState, useCallback, useMemo } from 'react';
 import { LANDMARK_INDICES, COLORS } from '../constants';
 import { calculateMetrics } from '../services/analysisEngine';
 import { DiagnosticMetrics, Landmark } from '../types';
+import { OneEuroFilter } from '../utils/oneEuroFilter';
 
 interface Props {
   onMetricsUpdate: (metrics: DiagnosticMetrics, landmarks: Landmark[]) => void;
+  stream: MediaStream | null; // Receive stream from App
 }
 
-// Exponential Smoothing Factor (Lower = Smoother/Slower, Higher = Responsive/Jittery)
-const SMOOTHING_FACTOR = 0.5;
-
-const lerp = (start: number, end: number, factor: number) => start + (end - start) * factor;
-
-const CameraView: React.FC<Props> = ({ onMetricsUpdate }) => {
+const CameraView: React.FC<Props> = ({ onMetricsUpdate, stream }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const faceMeshRef = useRef<any>(null);
   const requestRef = useRef<number>(null);
-  const landmarksBufferRef = useRef<Landmark[] | null>(null); // Store previous landmarks
+
+  // ONE EURO FILTERS: Map of landmarkIndex -> {x: Filter, y: Filter, z: Filter}
+  const filtersRef = useRef<Map<number, { x: OneEuroFilter, y: OneEuroFilter, z: OneEuroFilter }>>(new Map());
+
   const [isLoaded, setIsLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Initialize filters for key landmarks (Face Oval, Lips, Chin)
+  // We don't need to filter ALL 468 points, just the ones for metrics and drawing.
+  const getFilters = (idx: number) => {
+    if (!filtersRef.current.has(idx)) {
+      // Config: Freq 30Hz, MinCutoff 1.0 (slow), Beta 0.0 (latency), DCutoff 1.0
+      // For Chin, we want HIGH stability.
+      filtersRef.current.set(idx, {
+        x: new OneEuroFilter(30, 0.5, 0.001, 1),
+        y: new OneEuroFilter(30, 0.5, 0.001, 1),
+        z: new OneEuroFilter(30, 0.5, 0.001, 1)
+      });
+    }
+    return filtersRef.current.get(idx)!;
+  };
 
   const onResults = useCallback((results: any) => {
     if (!canvasRef.current || !videoRef.current) return;
@@ -32,29 +46,58 @@ const CameraView: React.FC<Props> = ({ onMetricsUpdate }) => {
     canvasCtx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
 
     if (results.multiFaceLandmarks && results.multiFaceLandmarks.length > 0) {
-      let landmarks = results.multiFaceLandmarks[0];
+      const rawLandmarks = results.multiFaceLandmarks[0];
+      const timestamp = Date.now() / 1000;
 
-      // APPLY SMOOTHING
-      if (landmarksBufferRef.current) {
-        landmarks = landmarks.map((lm: any, i: number) => ({
-          x: lerp(landmarksBufferRef.current![i].x, lm.x, SMOOTHING_FACTOR),
-          y: lerp(landmarksBufferRef.current![i].y, lm.y, SMOOTHING_FACTOR),
-          z: lerp(landmarksBufferRef.current![i].z, lm.z, SMOOTHING_FACTOR),
-        }));
-      }
-      landmarksBufferRef.current = landmarks;
+      // 1. ADVANCED SMOOTHING (One Euro Filter)
+      // Only smooth indices we care about to save perf
+      const indicesToSmooth = [
+        ...Object.values(LANDMARK_INDICES).filter(v => typeof v === 'number'), // Single points
+        ...LANDMARK_INDICES.MANDIBLE_PATH,
+        ...[377, 400, 378, 148, 175, 150] // Extra chin points for Centroid
+      ];
 
-      const metrics = calculateMetrics(landmarks);
-      onMetricsUpdate(metrics, landmarks);
+      const smoothedLandmarks = [...rawLandmarks]; // Copy array
 
-      // Renderização mais leve para evitar lag
+      indicesToSmooth.forEach((idx: any) => {
+        if (typeof idx === 'number') {
+          const f = getFilters(idx);
+          smoothedLandmarks[idx] = {
+            x: f.x.filter(rawLandmarks[idx].x, timestamp),
+            y: f.y.filter(rawLandmarks[idx].y, timestamp),
+            z: f.z.filter(rawLandmarks[idx].z, timestamp)
+          };
+        }
+      });
+
+      // 2. VIRTUAL CHIN (Centroid Calculation)
+      // Robust Chin = Average of [152 (Chin Tip) + Neighbors]
+      const chinIndices = [152, 377, 400, 378, 148, 175, 150];
+      const virtualChin = { x: 0, y: 0, z: 0 };
+      chinIndices.forEach(idx => {
+        virtualChin.x += smoothedLandmarks[idx].x;
+        virtualChin.y += smoothedLandmarks[idx].y;
+        virtualChin.z += smoothedLandmarks[idx].z;
+      });
+      virtualChin.x /= chinIndices.length;
+      virtualChin.y /= chinIndices.length;
+      virtualChin.z /= chinIndices.length;
+
+      // Inject Virtual Chin back into index 152 for the metrics engine to use
+      smoothedLandmarks[152] = virtualChin;
+
+      // 3. CALCULATE METRICS
+      const metrics = calculateMetrics(smoothedLandmarks);
+      onMetricsUpdate(metrics, smoothedLandmarks);
+
+      // 4. DRAWING
       canvasCtx.lineWidth = 2;
       canvasCtx.strokeStyle = COLORS.RELAXX_GREEN;
 
       const drawPoint = (p: Landmark, size = 1.5, color = COLORS.RELAXX_GREEN) => {
         canvasCtx.fillStyle = color;
         canvasCtx.beginPath();
-        // Mirror X coordinate since we removed canvas scaling
+        // Mirror X
         canvasCtx.arc((1 - p.x) * canvasRef.current!.width, p.y * canvasRef.current!.height, size, 0, 2 * Math.PI);
         canvasCtx.fill();
       };
@@ -68,30 +111,29 @@ const CameraView: React.FC<Props> = ({ onMetricsUpdate }) => {
         canvasCtx.stroke();
       };
 
-      const forehead = landmarks[LANDMARK_INDICES.FOREHEAD];
-      const chin = landmarks[LANDMARK_INDICES.CHIN];
+      const forehead = smoothedLandmarks[LANDMARK_INDICES.FOREHEAD];
+      const chin = smoothedLandmarks[LANDMARK_INDICES.CHIN]; // Now Virtual Chin
       drawLine(forehead, chin, COLORS.RELAXX_GREEN, 0.2);
 
-      // Path mandibular (Simplified for performance)
+      // Path mandibular
       canvasCtx.globalAlpha = 0.6;
       canvasCtx.beginPath();
       LANDMARK_INDICES.MANDIBLE_PATH.forEach((idx, i) => {
-        const p = landmarks[idx];
-        const x = (1 - p.x) * canvasRef.current!.width; // Mirror X
+        const p = smoothedLandmarks[idx];
+        const x = (1 - p.x) * canvasRef.current!.width;
         const y = p.y * canvasRef.current!.height;
         if (i === 0) canvasCtx.moveTo(x, y);
         else canvasCtx.lineTo(x, y);
       });
       canvasCtx.stroke();
 
-      const upper = landmarks[LANDMARK_INDICES.UPPER_LIP];
-      const lower = landmarks[LANDMARK_INDICES.LOWER_LIP];
+      const upper = smoothedLandmarks[LANDMARK_INDICES.UPPER_LIP];
+      const lower = smoothedLandmarks[LANDMARK_INDICES.LOWER_LIP];
       drawLine(upper, lower, '#FFFFFF', 0.8);
       drawPoint(upper, 2, '#FFFFFF');
       drawPoint(lower, 2, '#FFFFFF');
 
-      // VISUAL MATH: Display Metrics near the face
-      // We position the text to the LEFT of the mouth (since image is mirrored, right becomes left)
+      // VISUAL MATH
       const textX = ((1 - upper.x) * canvasRef.current!.width) + 20;
       const textY = (upper.y * canvasRef.current!.height);
 
@@ -100,10 +142,8 @@ const CameraView: React.FC<Props> = ({ onMetricsUpdate }) => {
       canvasCtx.shadowColor = "rgba(0, 0, 0, 0.8)";
       canvasCtx.shadowBlur = 4;
 
-      // Draw calculated amplitude
       canvasCtx.fillText(`AMP: ${metrics.openingAmplitude.toFixed(1)}mm`, textX, textY);
 
-      // Draw Lateral Deviation if significant
       if (Math.abs(metrics.lateralDeviation) > 1) {
         canvasCtx.fillStyle = Math.abs(metrics.lateralDeviation) > 5 ? "#FF3333" : "rgba(255, 255, 255, 0.8)";
         canvasCtx.fillText(`DEV: ${metrics.lateralDeviation.toFixed(1)}mm`, textX, textY + 16);
@@ -135,61 +175,42 @@ const CameraView: React.FC<Props> = ({ onMetricsUpdate }) => {
     faceMesh.onResults(onResults);
     faceMeshRef.current = faceMesh;
 
-    const processVideo = async () => {
-      if (videoRef.current && videoRef.current.readyState >= 2 && active) {
-        try {
-          await faceMesh.send({ image: videoRef.current });
-        } catch (e) {
-          console.debug("Frame skip");
-        }
-      }
-      if (active) {
-        requestRef.current = requestAnimationFrame(processVideo);
-      }
-    };
+    // Stream Setup
+    if (videoRef.current && stream && active) {
+      videoRef.current.srcObject = stream;
+      videoRef.current.onloadedmetadata = () => {
+        if (videoRef.current && canvasRef.current) {
+          videoRef.current.play().catch(e => console.error("Play error:", e));
+          canvasRef.current.width = videoRef.current.videoWidth;
+          canvasRef.current.height = videoRef.current.videoHeight;
+          setIsLoaded(true);
 
-    const startCamera = async () => {
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: {
-            width: { ideal: 1280 },
-            height: { ideal: 720 },
-            facingMode: 'user',
-            frameRate: { ideal: 30 }
-          },
-          audio: false
-        });
-
-        if (videoRef.current && active) {
-          videoRef.current.srcObject = stream;
-          videoRef.current.onloadedmetadata = () => {
-            if (videoRef.current && canvasRef.current) {
-              videoRef.current.play();
-              // SYNC CANVAS WITH VIDEO SOURCE
-              canvasRef.current.width = videoRef.current.videoWidth;
-              canvasRef.current.height = videoRef.current.videoHeight;
-              setIsLoaded(true);
-              processVideo();
+          // Start Loop
+          const processVideo = async () => {
+            if (videoRef.current && videoRef.current.readyState >= 2 && active) {
+              try {
+                await faceMesh.send({ image: videoRef.current });
+              } catch (e) {
+                // silent
+              }
+            }
+            if (active) {
+              requestRef.current = requestAnimationFrame(processVideo);
             }
           };
+          processVideo();
         }
-      } catch (err) {
-        setError("Acesso à câmera negado.");
-      }
-    };
-
-    startCamera();
+      };
+    } else if (!stream) {
+      setError("Aguardando permissão...");
+    }
 
     return () => {
       active = false;
       if (requestRef.current) cancelAnimationFrame(requestRef.current);
-      if (videoRef.current && videoRef.current.srcObject) {
-        const stream = videoRef.current.srcObject as MediaStream;
-        stream.getTracks().forEach(track => track.stop());
-      }
       faceMesh.close();
     };
-  }, [onResults]);
+  }, [onResults, stream]);
 
   return (
     <div className="relative w-full h-screen bg-[#001A13] flex items-center justify-center overflow-hidden">
@@ -197,6 +218,12 @@ const CameraView: React.FC<Props> = ({ onMetricsUpdate }) => {
         <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-[#001A13]">
           <div className="w-12 h-12 border-2 border-t-[#00FF66] border-[#00FF66]/10 rounded-full animate-spin mb-4" />
           <p className="text-[#00FF66] font-black uppercase tracking-[0.4em] text-[9px] animate-pulse">Iniciando Biometria...</p>
+        </div>
+      )}
+
+      {error && !isLoaded && (
+        <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-[#001A13] p-10 text-center">
+          <p className="text-red-400 font-bold mb-4">{error}</p>
         </div>
       )}
 

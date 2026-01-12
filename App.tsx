@@ -106,6 +106,28 @@ const App: React.FC = () => {
     setAppState('REPORTING');
   };
 
+  const [stream, setStream] = useState<MediaStream | null>(null);
+  const [permissionError, setPermissionError] = useState<string | null>(null);
+
+  const handleCameraPermission = async () => {
+    try {
+      const mediaStream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
+          facingMode: 'user',
+          frameRate: { ideal: 30 }
+        },
+        audio: false
+      });
+      setStream(mediaStream);
+      setAppState('CALIBRATION');
+    } catch (err) {
+      console.error("Camera denied:", err);
+      setPermissionError("Permissão negada. Verifique as configurações do navegador.");
+    }
+  };
+
   return (
     <div className="relative h-screen w-full overflow-hidden bg-[#001A13]">
       {appState === 'ONBOARDING' && <Onboarding onStart={() => setAppState('PERMISSION_REQUEST')} />}
@@ -113,7 +135,7 @@ const App: React.FC = () => {
       {/* CAMERA ALWAYS ACTIVE in these states to prevent black screen */}
       {(appState === 'CALIBRATION' || appState === 'EXERCISE' || appState === 'PERMISSION_REQUEST' || appState === 'LEAD_FORM') && (
         <>
-          <CameraView onMetricsUpdate={handleMetricsUpdate} />
+          <CameraView onMetricsUpdate={handleMetricsUpdate} stream={stream} />
 
           {appState !== 'LEAD_FORM' && (
             <GuidanceSystem message={getGuidance().m} subMessage={getGuidance().s} />
@@ -147,10 +169,9 @@ const App: React.FC = () => {
               <svg className="w-8 h-8 text-[#00FF66]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
             </div>
             <p className="text-white text-lg font-medium">Precisamos acessar sua câmera para iniciar a biometria.</p>
+            {permissionError && <p className="text-red-400 text-xs font-bold">{permissionError}</p>}
             <button
-              onClick={() => {
-                setAppState('CALIBRATION');
-              }}
+              onClick={handleCameraPermission}
               className="btn-relaxx w-full py-5 rounded-full font-black uppercase tracking-widest text-[10px] active:scale-95 transition-transform"
             >
               Autorizar Câmera
