@@ -97,6 +97,12 @@ const CameraView: React.FC<Props> = ({ onMetricsUpdate, stream, tare }) => {
         displayMetrics.openingAmplitude = Math.max(0, displayMetrics.openingAmplitude - tare.opening);
       }
 
+      // ZERO-START MASK (Match App.tsx)
+      if (displayMetrics.openingAmplitude < 2.5) {
+        displayMetrics.openingAmplitude = 0;
+        displayMetrics.lateralDeviation = 0;
+      }
+
       onMetricsUpdate(metrics, metricLandmarks);
 
       // 4. DRAWING (Using Natural Smoothed Landmarks)

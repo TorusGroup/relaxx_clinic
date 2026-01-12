@@ -80,6 +80,14 @@ const App: React.FC = () => {
     if (currentAppState === 'EXERCISE' || currentAppState === 'LEAD_FORM') {
       smoothed.lateralDeviation -= tareRef.current.lateral;
       smoothed.openingAmplitude = Math.max(0, smoothed.openingAmplitude - tareRef.current.opening);
+
+      // ZERO-START DEADBAND (Suggestion Logic)
+      // Logic: If mouth is effectively closed (< 2.5u), assume NO deviation.
+      // This creates a clean "0.0 / 0.0" start and prevents static head-roll noise.
+      if (smoothed.openingAmplitude < 2.5) {
+        smoothed.openingAmplitude = 0;
+        smoothed.lateralDeviation = 0;
+      }
     }
 
     setMetrics(smoothed);
