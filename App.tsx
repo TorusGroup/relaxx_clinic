@@ -50,9 +50,8 @@ const App: React.FC = () => {
 
   const smoothMetrics = (newMetrics: DiagnosticMetrics) => {
     // --- V5.0 CONFIGURATION ---
-    // Set to true to enable "Smart Lock" (Adaptive Smoothing).
-    // Set to false to revert to simple 5-frame moving average.
-    const ENABLE_SMART_LOCK = true;
+    // DISABLED FOR DIAGNOSIS (V6.2)
+    const ENABLE_SMART_LOCK = false;
     const STABILITY_THRESHOLD = 2.0; // Units of change to consider "Movement"
     const STATIC_ALPHA = 0.05;       // Heavy smoothing (Lock) when static
     const DYNAMIC_ALPHA = 0.30;      // Light smoothing (Flow) when moving
@@ -96,7 +95,8 @@ const App: React.FC = () => {
       };
 
       prevSmoothedRef.current = smoothed;
-      return smoothed;
+      // Keeping logic block but unreachable for now
+      return newMetrics;
 
     } else {
       // --- LEGACY LOGIC (Simple Moving Average) ---
@@ -130,6 +130,16 @@ const App: React.FC = () => {
 
     // Always smooth metrics first
     const smoothed = smoothMetrics(rawMetrics);
+
+    // LOGGING FOR DIAGNOSIS (V6.2)
+    if (Math.random() < 0.05) { // Sample 5% of frames to avoid spam
+      console.log("Health Check:", {
+        state: currentAppState,
+        raw: rawMetrics.openingAmplitude.toFixed(1),
+        smooth: smoothed.openingAmplitude.toFixed(1),
+        tare: tareRef.current.opening.toFixed(1)
+      });
+    }
 
     // Apply Taring (Subtract Calibration Offset)
     if (currentAppState === 'EXERCISE' || currentAppState === 'LEAD_FORM') {
