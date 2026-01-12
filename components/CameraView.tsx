@@ -6,10 +6,11 @@ import { OneEuroFilter } from '../utils/oneEuroFilter';
 
 interface Props {
   onMetricsUpdate: (metrics: DiagnosticMetrics, landmarks: Landmark[]) => void;
-  stream: MediaStream | null; // Receive stream from App
+  stream: MediaStream | null;
+  tare: { lateral: number; opening: number }; // Receive tare offset
 }
 
-const CameraView: React.FC<Props> = ({ onMetricsUpdate, stream }) => {
+const CameraView: React.FC<Props> = ({ onMetricsUpdate, stream, tare }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const faceMeshRef = useRef<any>(null);
@@ -88,6 +89,13 @@ const CameraView: React.FC<Props> = ({ onMetricsUpdate, stream }) => {
 
       // 3. CALCULATE METRICS (Using Robust Virtual Chin)
       const metrics = calculateMetrics(metricLandmarks);
+
+      // APPLY TARE VISUALLY (So canvas matches HUD)
+      const displayMetrics = { ...metrics };
+      if (tare) {
+        displayMetrics.lateralDeviation -= tare.lateral;
+      }
+
       onMetricsUpdate(metrics, metricLandmarks);
 
       // 4. DRAWING (Using Natural Smoothed Landmarks)
@@ -142,15 +150,16 @@ const CameraView: React.FC<Props> = ({ onMetricsUpdate, stream }) => {
       canvasCtx.shadowColor = "rgba(0, 0, 0, 0.8)";
       canvasCtx.shadowBlur = 4;
 
-      canvasCtx.fillText(`AMP: ${metrics.openingAmplitude.toFixed(1)}mm`, textX, textY);
+      // Updated Unit: 'u' to match HUD
+      canvasCtx.fillText(`AMP: ${displayMetrics.openingAmplitude.toFixed(1)}u`, textX, textY);
 
-      if (Math.abs(metrics.lateralDeviation) > 1) {
-        canvasCtx.fillStyle = Math.abs(metrics.lateralDeviation) > 5 ? "#FF3333" : "rgba(255, 255, 255, 0.8)";
-        canvasCtx.fillText(`DEV: ${metrics.lateralDeviation.toFixed(1)}mm`, textX, textY + 16);
+      if (Math.abs(displayMetrics.lateralDeviation) > 1) {
+        canvasCtx.fillStyle = Math.abs(displayMetrics.lateralDeviation) > 5 ? "#FF3333" : "rgba(255, 255, 255, 0.8)";
+        canvasCtx.fillText(`DEV: ${displayMetrics.lateralDeviation.toFixed(1)}u`, textX, textY + 16);
       }
     }
     canvasCtx.restore();
-  }, [onMetricsUpdate]);
+  }, [onMetricsUpdate, tare]);
 
   useEffect(() => {
     let active = true;

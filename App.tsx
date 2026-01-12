@@ -167,7 +167,13 @@ const App: React.FC = () => {
       {/* CAMERA ALWAYS ACTIVE in these states to prevent black screen */}
       {(appState === 'CALIBRATION' || appState === 'EXERCISE' || appState === 'PERMISSION_REQUEST' || appState === 'LEAD_FORM') && (
         <>
-          <CameraView onMetricsUpdate={handleMetricsUpdate} stream={stream} />
+          {stream && (
+            <CameraView
+              onMetricsUpdate={handleMetricsUpdate}
+              stream={stream}
+              tare={tareRef.current}
+            />
+          )}
 
           {appState !== 'LEAD_FORM' && (
             <GuidanceSystem message={getGuidance().m} subMessage={getGuidance().s} />
