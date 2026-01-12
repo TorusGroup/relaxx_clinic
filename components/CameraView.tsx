@@ -21,10 +21,11 @@ const CameraView: React.FC<Props> = ({ onMetricsUpdate, stream, tare }) => {
 
   const [isLoaded, setIsLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [hasDetectedFace, setHasDetectedFace] = useState(false); // V6.0 Cinematic Entry
 
   // Initialize filters for key landmarks (Face Oval, Lips, Chin)
-  // We don't need to filter ALL 468 points, just the ones for metrics and drawing.
-  const getFilters = (idx: number) => {
+  // V6.0 FIX: Initialize with CURRENT value to prevent "flying" glitch from (0,0)
+  const getFilters = (idx: number, initValue: { x: number, y: number, z: number }) => {
     if (!filtersRef.current.has(idx)) {
       // Config: Freq 30Hz, MinCutoff 1.0 (slow), Beta 0.0 (latency), DCutoff 1.0
       // For Chin, we want HIGH stability.
@@ -33,6 +34,10 @@ const CameraView: React.FC<Props> = ({ onMetricsUpdate, stream, tare }) => {
         y: new OneEuroFilter(30, 0.5, 0.001, 1),
         z: new OneEuroFilter(30, 0.5, 0.001, 1)
       });
+      // Force internal state to current value immediately
+      filtersRef.current.get(idx)!.x.filter(initValue.x, -1); // prime the filter
+      filtersRef.current.get(idx)!.y.filter(initValue.y, -1);
+      filtersRef.current.get(idx)!.z.filter(initValue.z, -1);
     }
     return filtersRef.current.get(idx)!;
   };
@@ -47,6 +52,9 @@ const CameraView: React.FC<Props> = ({ onMetricsUpdate, stream, tare }) => {
     canvasCtx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
 
     if (results.multiFaceLandmarks && results.multiFaceLandmarks.length > 0) {
+      // Cinematically Reveal UI on first detection
+      if (!hasDetectedFace) setHasDetectedFace(true);
+
       const rawLandmarks = results.multiFaceLandmarks[0];
       const timestamp = Date.now() / 1000;
 
@@ -61,7 +69,8 @@ const CameraView: React.FC<Props> = ({ onMetricsUpdate, stream, tare }) => {
       const smoothedLandmarks = [...rawLandmarks];
 
       indicesToSmooth.forEach((idx) => {
-        const f = getFilters(idx);
+        // V6.0: Pass raw value for initialization
+        const f = getFilters(idx, rawLandmarks[idx]);
         smoothedLandmarks[idx] = {
           x: f.x.filter(rawLandmarks[idx].x, timestamp),
           y: f.y.filter(rawLandmarks[idx].y, timestamp),
@@ -253,7 +262,7 @@ const CameraView: React.FC<Props> = ({ onMetricsUpdate, stream, tare }) => {
         />
         <canvas
           ref={canvasRef}
-          className="absolute inset-0 w-full h-full object-cover md:rounded-[40px] pointer-events-none"
+          className={`absolute inset-0 w-full h-full object-cover md:rounded-[40px] pointer-events-none transition-opacity duration-1000 ${hasDetectedFace ? 'opacity-100' : 'opacity-0'}`}
         />
 
         {/* Mirror Guide Overlay */}

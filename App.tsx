@@ -206,6 +206,9 @@ const App: React.FC = () => {
 
   const handleCameraPermission = async () => {
     try {
+      if (stream) {
+        stream.getTracks().forEach(track => track.stop());
+      }
       const mediaStream = await navigator.mediaDevices.getUserMedia({
         video: {
           width: { ideal: 1280 },
@@ -216,12 +219,40 @@ const App: React.FC = () => {
         audio: false
       });
       setStream(mediaStream);
-      setAppState('CALIBRATION');
+      // Only set state if we are in the initial request phase
+      if (appState === 'PERMISSION_REQUEST') {
+        setAppState('CALIBRATION');
+      }
     } catch (err) {
       console.error("Camera denied:", err);
       setPermissionError("Permissão negada. Verifique as configurações do navegador.");
     }
   };
+
+  // V6.0 MOBILE RESUME FIX: Handle tab switching/minimizing
+  useEffect(() => {
+    const handleVisibilityChange = async () => {
+      if (document.visibilityState === 'visible') {
+        console.log("App resumed. Checking camera stream...");
+        // If we are in an active state but stream is missing or inactive, try to restore
+        if (['CALIBRATION', 'EXERCISE'].includes(appState)) {
+          if (!stream || !stream.active) {
+            console.log("Stream invalid on resume. Attempting restore...");
+            await handleCameraPermission();
+          } else {
+            // Even if stream object exists, mobile browsers might freeze the track
+            stream.getVideoTracks().forEach(track => {
+              track.enabled = true;
+              // track.applyConstraints() might wake it up?
+            });
+          }
+        }
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
+  }, [appState, stream]);
 
   return (
     <div className="relative h-screen w-full overflow-hidden bg-[#001A13]">
