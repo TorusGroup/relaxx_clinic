@@ -8,11 +8,17 @@ interface Props {
   onMetricsUpdate: (metrics: DiagnosticMetrics, landmarks: Landmark[]) => void;
 }
 
+// Exponential Smoothing Factor (Lower = Smoother/Slower, Higher = Responsive/Jittery)
+const SMOOTHING_FACTOR = 0.5;
+
+const lerp = (start: number, end: number, factor: number) => start + (end - start) * factor;
+
 const CameraView: React.FC<Props> = ({ onMetricsUpdate }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const faceMeshRef = useRef<any>(null);
   const requestRef = useRef<number>(null);
+  const landmarksBufferRef = useRef<Landmark[] | null>(null); // Store previous landmarks
   const [isLoaded, setIsLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -26,7 +32,18 @@ const CameraView: React.FC<Props> = ({ onMetricsUpdate }) => {
     canvasCtx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
 
     if (results.multiFaceLandmarks && results.multiFaceLandmarks.length > 0) {
-      const landmarks = results.multiFaceLandmarks[0];
+      let landmarks = results.multiFaceLandmarks[0];
+
+      // APPLY SMOOTHING
+      if (landmarksBufferRef.current) {
+        landmarks = landmarks.map((lm: any, i: number) => ({
+          x: lerp(landmarksBufferRef.current![i].x, lm.x, SMOOTHING_FACTOR),
+          y: lerp(landmarksBufferRef.current![i].y, lm.y, SMOOTHING_FACTOR),
+          z: lerp(landmarksBufferRef.current![i].z, lm.z, SMOOTHING_FACTOR),
+        }));
+      }
+      landmarksBufferRef.current = landmarks;
+
       const metrics = calculateMetrics(landmarks);
       onMetricsUpdate(metrics, landmarks);
 

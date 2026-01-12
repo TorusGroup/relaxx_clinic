@@ -148,8 +148,10 @@ const App: React.FC = () => {
             </div>
             <p className="text-white text-lg font-medium">Precisamos acessar sua câmera para iniciar a biometria.</p>
             <button
-              onClick={() => setAppState('CALIBRATION')}
-              className="btn-relaxx w-full py-5 rounded-full font-black uppercase tracking-widest text-[10px]"
+              onClick={() => {
+                setAppState('CALIBRATION');
+              }}
+              className="btn-relaxx w-full py-5 rounded-full font-black uppercase tracking-widest text-[10px] active:scale-95 transition-transform"
             >
               Autorizar Câmera
             </button>
