@@ -27,13 +27,18 @@ const App: React.FC = () => {
   const [report, setReport] = useState<string | null>(null);
   const [isLoadingReport, setIsLoadingReport] = useState(false);
 
+  // Taring (Auto-Calibration) Refs
+  const tareRef = useRef({ lateral: 0, opening: 0 });
+  const calibrationBuffer = useRef<DiagnosticMetrics[]>([]);
+
+  // History Refs
   const telemetryHistory = useRef<TelemetryData[]>([]);
   const metricsBuffer = useRef<DiagnosticMetrics[]>([]);
 
   const getGuidance = () => {
     switch (appState) {
       case 'PERMISSION_REQUEST': return { m: "Iniciando inteligência diagnóstica Relaxx.", s: "Sincronizando Sensores" };
-      case 'CALIBRATION': return { m: "Centralize seu rosto dentro da marcação.", s: "Ajuste de Eixo" };
+      case 'CALIBRATION': return { m: "Mantenha o rosto parado e relaxado.", s: "Calibrando Zero Biológico..." }; // Updated text
       case 'EXERCISE': return { m: `Abra a boca suavemente (${repsCount}/${REPS_REQUIRED}).`, s: "Capturando Movimento" };
       case 'LEAD_FORM': return { m: "Dados capturados. Prepare-se para o laudo.", s: "Criptografando Telemetria" };
       default: return { m: "", s: "" };
@@ -68,19 +73,46 @@ const App: React.FC = () => {
     // Access latest state via ref to avoid breaking callback stability
     const { appState: currentAppState, isMouthOpen: currentIsMouthOpen, repsCount: currentRepsCount } = stateRef.current;
 
-    // Always smooth metrics
+    // Always smooth metrics first
     const smoothed = smoothMetrics(rawMetrics);
+
+    // Apply Taring (Subtract Calibration Offset)
+    if (currentAppState === 'EXERCISE' || currentAppState === 'LEAD_FORM') {
+      smoothed.lateralDeviation -= tareRef.current.lateral;
+      // We generally don't tare opening, as 0 opening is physically 0 lips closed.
+      // But lateral deviation has a natural asymmetry bias we want to zero out.
+    }
+
     setMetrics(smoothed);
 
     // State Transitions Logic
-    if (currentAppState === 'CALIBRATION' && smoothed.isCentered) {
-      setAppState('EXERCISE');
+    if (currentAppState === 'CALIBRATION') {
+      if (smoothed.isCentered) {
+        calibrationBuffer.current.push(smoothed);
+
+        // Require 30 frames (~1s at 30fps) of STABILITY to calibrate
+        if (calibrationBuffer.current.length > 30) {
+          // Calculate Average Bias
+          const avgLateral = calibrationBuffer.current.reduce((sum, m) => sum + m.lateralDeviation, 0) / calibrationBuffer.current.length;
+
+          tareRef.current = { lateral: avgLateral, opening: 0 };
+          console.log("Auto-Calibration Completed. Tare Offset:", tareRef.current);
+
+          calibrationBuffer.current = []; // Reset
+          setAppState('EXERCISE');
+        }
+      } else {
+        // Reset buffer if user moves out of center during calibration
+        if (calibrationBuffer.current.length > 0) {
+          calibrationBuffer.current = [];
+        }
+      }
     }
 
     if (currentAppState === 'EXERCISE') {
       telemetryHistory.current.push({ timestamp: Date.now(), metrics: smoothed });
 
-      const adjustedThreshold = 18; // Increased sensitivity (was 22)
+      const adjustedThreshold = 18; // Sensitivity
 
       if (smoothed.openingAmplitude > adjustedThreshold && !currentIsMouthOpen) {
         setIsMouthOpen(true);

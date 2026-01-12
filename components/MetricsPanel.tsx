@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { DiagnosticMetrics } from '../types';
 
 interface Props {
@@ -7,8 +7,39 @@ interface Props {
   isRecording: boolean;
 }
 
+// Hook for speedometer-like visual smoothing (Low-Pass Filter)
+const useSmoothedNumber = (target: number, speed = 0.1) => {
+  const [current, setCurrent] = useState(target);
+  const targetRef = useRef(target);
+
+  useEffect(() => {
+    targetRef.current = target;
+  }, [target]);
+
+  useEffect(() => {
+    let animFrame: number;
+    const animate = () => {
+      setCurrent(prev => {
+        const diff = targetRef.current - prev;
+        if (Math.abs(diff) < 0.05) return targetRef.current; // Snap to target
+        return prev + diff * speed; // Lerp
+      });
+      animFrame = requestAnimationFrame(animate);
+    };
+    animFrame = requestAnimationFrame(animate);
+    return () => cancelAnimationFrame(animFrame);
+  }, [speed]);
+
+  return current;
+};
+
 const MetricsPanel: React.FC<Props> = ({ metrics, isRecording }) => {
   const [isExpanded, setIsExpanded] = useState(false);
+
+  // Visual Smoothing (Lag) for Premium Feel
+  const displayAmp = useSmoothedNumber(metrics.openingAmplitude, 0.15); // Faster for opening
+  const displayDev = useSmoothedNumber(metrics.lateralDeviation, 0.08); // Slower for deviation (more stable)
+  const displayVertical = useSmoothedNumber(metrics.verticalAlignment, 0.1);
 
   // Versão Mobile HUD
   const MobileHUD = () => (
@@ -17,12 +48,12 @@ const MetricsPanel: React.FC<Props> = ({ metrics, isRecording }) => {
         <div className="flex gap-4">
           <div className="flex flex-col">
             <span className="text-[8px] text-[#00FF66] font-black uppercase tracking-widest">Abertura</span>
-            <span className="text-white font-mono text-sm">{metrics.openingAmplitude.toFixed(0)}u</span>
+            <span className="text-white font-mono text-sm">{displayAmp.toFixed(0)}u</span>
           </div>
           <div className="w-[1px] h-8 bg-white/10" />
           <div className="flex flex-col">
             <span className="text-[8px] text-[#00FF66] font-black uppercase tracking-widest">Desvio</span>
-            <span className="text-white font-mono text-sm">{metrics.lateralDeviation.toFixed(1)}u</span>
+            <span className="text-white font-mono text-sm">{displayDev.toFixed(1)}u</span>
           </div>
         </div>
         <button
@@ -38,10 +69,10 @@ const MetricsPanel: React.FC<Props> = ({ metrics, isRecording }) => {
           <div className="space-y-4">
             <div className="flex justify-between text-[10px]">
               <span className="text-gray-400 uppercase">Eixo Vertical</span>
-              <span className="text-white">{metrics.verticalAlignment.toFixed(1)}°</span>
+              <span className="text-white">{displayVertical.toFixed(1)}°</span>
             </div>
             <div className="w-full bg-white/10 h-1 rounded-full">
-              <div className="bg-[#00FF66] h-full transition-all duration-300" style={{ width: `${Math.min(100, Math.abs(metrics.verticalAlignment) * 5)}%` }} />
+              <div className="bg-[#00FF66] h-full transition-all duration-300" style={{ width: `${Math.min(100, Math.abs(displayVertical) * 5)}%` }} />
             </div>
             <div className={`p-2 rounded-lg text-center text-[9px] font-bold uppercase tracking-widest ${metrics.isCentered ? 'bg-[#00FF66]/10 text-[#00FF66]' : 'bg-red-500/10 text-red-400'}`}>
               {metrics.isCentered ? 'Posicionamento Correto' : 'Centralize o Rosto'}
@@ -73,9 +104,9 @@ const MetricsPanel: React.FC<Props> = ({ metrics, isRecording }) => {
 
         <div className="space-y-5">
           {[
-            { label: 'Eixo Vertical', value: `${metrics.verticalAlignment.toFixed(1)}°`, progress: Math.abs(metrics.verticalAlignment) * 10 },
-            { label: 'Abertura Bucal', value: `${metrics.openingAmplitude.toFixed(0)}u`, progress: metrics.openingAmplitude * 1.5 },
-            { label: 'Mandible Drift', value: `${metrics.lateralDeviation.toFixed(1)}u`, progress: Math.abs(metrics.lateralDeviation) * 2 }
+            { label: 'Eixo Vertical', value: `${displayVertical.toFixed(1)}°`, progress: Math.abs(displayVertical) * 10 },
+            { label: 'Abertura Bucal', value: `${displayAmp.toFixed(0)}u`, progress: displayAmp * 1.5 },
+            { label: 'Mandible Drift', value: `${displayDev.toFixed(1)}u`, progress: Math.abs(displayDev) * 2 }
           ].map((item, i) => (
             <div key={i} className="space-y-2">
               <div className="flex justify-between text-[10px]">
