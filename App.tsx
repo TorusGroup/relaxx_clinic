@@ -45,16 +45,61 @@ const App: React.FC = () => {
     }
   };
 
+  // V5.0 SMART LOCK: Storage for previous smoothed value (EMA)
+  const prevSmoothedRef = useRef<DiagnosticMetrics | null>(null);
+
   const smoothMetrics = (newMetrics: DiagnosticMetrics) => {
-    metricsBuffer.current.push(newMetrics);
-    if (metricsBuffer.current.length > BUFFER_SIZE) metricsBuffer.current.shift();
-    const count = metricsBuffer.current.length;
-    return metricsBuffer.current.reduce((acc, m) => ({
-      verticalAlignment: acc.verticalAlignment + m.verticalAlignment / count,
-      openingAmplitude: acc.openingAmplitude + m.openingAmplitude / count,
-      lateralDeviation: acc.lateralDeviation + m.lateralDeviation / count,
-      isCentered: m.isCentered
-    }), { verticalAlignment: 0, openingAmplitude: 0, lateralDeviation: 0, isCentered: false });
+    // --- V5.0 CONFIGURATION ---
+    // Set to true to enable "Smart Lock" (Adaptive Smoothing).
+    // Set to false to revert to simple 5-frame moving average.
+    const ENABLE_SMART_LOCK = true;
+    const STABILITY_THRESHOLD = 2.0; // Units of change to consider "Movement"
+    const STATIC_ALPHA = 0.05;       // Heavy smoothing (Lock) when static
+    const DYNAMIC_ALPHA = 0.30;      // Light smoothing (Flow) when moving
+
+    if (ENABLE_SMART_LOCK) {
+      if (!prevSmoothedRef.current) {
+        prevSmoothedRef.current = newMetrics;
+        return newMetrics;
+      }
+
+      const prev = prevSmoothedRef.current;
+
+      // 1. Calculate Delta (Max change across main metrics)
+      const delta = Math.max(
+        Math.abs(newMetrics.openingAmplitude - prev.openingAmplitude),
+        Math.abs(newMetrics.verticalAlignment - prev.verticalAlignment),
+        Math.abs(newMetrics.lateralDeviation - prev.lateralDeviation)
+      );
+
+      // 2. Determine Alpha (Adaptive)
+      // If signal changed less than threshold, assume noise -> Lock it down.
+      // If signal changed more, assume user intent -> Let it flow.
+      const alpha = delta < STABILITY_THRESHOLD ? STATIC_ALPHA : DYNAMIC_ALPHA;
+
+      // 3. Apply Exponential Moving Average (EMA)
+      const smoothed = {
+        verticalAlignment: prev.verticalAlignment + alpha * (newMetrics.verticalAlignment - prev.verticalAlignment),
+        openingAmplitude: prev.openingAmplitude + alpha * (newMetrics.openingAmplitude - prev.openingAmplitude),
+        lateralDeviation: prev.lateralDeviation + alpha * (newMetrics.lateralDeviation - prev.lateralDeviation),
+        isCentered: newMetrics.isCentered
+      };
+
+      prevSmoothedRef.current = smoothed;
+      return smoothed;
+
+    } else {
+      // --- LEGACY LOGIC (Simple Moving Average) ---
+      metricsBuffer.current.push(newMetrics);
+      if (metricsBuffer.current.length > BUFFER_SIZE) metricsBuffer.current.shift();
+      const count = metricsBuffer.current.length;
+      return metricsBuffer.current.reduce((acc, m) => ({
+        verticalAlignment: acc.verticalAlignment + m.verticalAlignment / count,
+        openingAmplitude: acc.openingAmplitude + m.openingAmplitude / count,
+        lateralDeviation: acc.lateralDeviation + m.lateralDeviation / count,
+        isCentered: m.isCentered
+      }), { verticalAlignment: 0, openingAmplitude: 0, lateralDeviation: 0, isCentered: false });
+    }
   };
 
   /* 
