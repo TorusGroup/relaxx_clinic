@@ -23,6 +23,10 @@ const CameraView: React.FC<Props> = ({ onMetricsUpdate, stream, tare }) => {
   const [error, setError] = useState<string | null>(null);
   const [hasDetectedFace, setHasDetectedFace] = useState(false); // V6.0 Cinematic Entry
 
+  // V8.0 PHYSICS: Mandible Lock & Trajectory
+  const chinOffsetRef = useRef<{ x: number, y: number } | null>(null);
+  const trajectoryRef = useRef<{ x: number, y: number }[]>([]);
+
   // Initialize filters for key landmarks (Face Oval, Lips, Chin)
   // V6.0 FIX: Initialize with CURRENT value to prevent "flying" glitch from (0,0)
   const getFilters = (idx: number, initValue: { x: number, y: number, z: number }) => {
@@ -77,6 +81,67 @@ const CameraView: React.FC<Props> = ({ onMetricsUpdate, stream, tare }) => {
           z: f.z.filter(rawLandmarks[idx].z, timestamp)
         };
       });
+
+      // --- V8.0 MANDIBLE PHYSICS LOCK ---
+      // Concept: The chin bone (152) is rigidly connected to the lower lip bone insertion.
+      // We assume the distance LowerLipBottom (17) -> Chin (152) is CONSTANT.
+      // This eliminates "floating chin" caused by shadow/skin artifacts.
+
+      const lowerLipBottom = smoothedLandmarks[17];
+      const rawChin = smoothedLandmarks[152]; // We use 152 (Menton) as anchor
+
+      if (!chinOffsetRef.current) {
+        // CAPTURE BONE GEOMETRY (First Frame)
+        chinOffsetRef.current = {
+          x: rawChin.x - lowerLipBottom.x,
+          y: rawChin.y - lowerLipBottom.y
+        };
+      }
+
+      // APPLY PHYSICS LOCK
+      // VirtualChin = LowerLip + FixedOffset
+      // We calculate where the chin SHOULD be based on the lip
+      const lockedChin = {
+        x: lowerLipBottom.x + chinOffsetRef.current.x,
+        y: lowerLipBottom.y + chinOffsetRef.current.y,
+        z: rawChin.z // Z depth is less critical for 2D drawing, keep original
+      };
+
+      // OVERRIDE the smoothed landmark 152 with our Locked Physics version
+      // This forces the "Comet Trail" and "Visual Curve" to follow the Physics Lock
+      smoothedLandmarks[152] = lockedChin;
+
+
+      // --- V8.0 COMET TRAIL (Trajectory Visualization) ---
+      // Add current chin position to history
+      const { width, height } = canvasRef.current;
+      const chinPoint = { x: lockedChin.x * width, y: lockedChin.y * height };
+
+      trajectoryRef.current.push(chinPoint);
+      if (trajectoryRef.current.length > 50) trajectoryRef.current.shift(); // Keep last 50 frames
+
+      // Draw Trail
+      if (trajectoryRef.current.length > 1) {
+        canvasCtx.beginPath();
+        canvasCtx.moveTo(trajectoryRef.current[0].x, trajectoryRef.current[0].y);
+        // Draw smooth curve through points? or just lines for speed
+        for (let i = 1; i < trajectoryRef.current.length; i++) {
+          canvasCtx.lineTo(trajectoryRef.current[i].x, trajectoryRef.current[i].y);
+        }
+        canvasCtx.lineCap = 'round';
+        canvasCtx.lineJoin = 'round';
+        canvasCtx.lineWidth = 4;
+        // Gradient Fade
+        const gradient = canvasCtx.createLinearGradient(
+          trajectoryRef.current[0].x, trajectoryRef.current[0].y,
+          chinPoint.x, chinPoint.y
+        );
+        gradient.addColorStop(0, 'rgba(0, 255, 102, 0)');
+        gradient.addColorStop(1, 'rgba(0, 255, 102, 0.8)');
+        canvasCtx.strokeStyle = gradient;
+        canvasCtx.stroke();
+      }
+
 
       // 2. VIRTUAL CHIN (Metric Stability ONLY)
       // We use a clone for metrics to not affect the visual drawing (which needs natural shape)
