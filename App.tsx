@@ -57,7 +57,17 @@ const App: React.FC = () => {
     const STATIC_ALPHA = 0.05;       // Heavy smoothing (Lock) when static
     const DYNAMIC_ALPHA = 0.30;      // Light smoothing (Flow) when moving
 
+    // V6.1 RESILIENCE: Sanitize Input
+    if (isNaN(newMetrics.openingAmplitude) || isNaN(newMetrics.lateralDeviation)) {
+      return { ...newMetrics, openingAmplitude: 0, lateralDeviation: 0 };
+    }
+
     if (ENABLE_SMART_LOCK) {
+      // V6.1 RESILIENCE: Reset if corrupted state detected
+      if (prevSmoothedRef.current && (isNaN(prevSmoothedRef.current.openingAmplitude) || isNaN(prevSmoothedRef.current.lateralDeviation))) {
+        prevSmoothedRef.current = null;
+      }
+
       if (!prevSmoothedRef.current) {
         prevSmoothedRef.current = newMetrics;
         return newMetrics;
@@ -234,6 +244,11 @@ const App: React.FC = () => {
     const handleVisibilityChange = async () => {
       if (document.visibilityState === 'visible') {
         console.log("App resumed. Checking camera stream...");
+
+        // V6.1 RESILIENCE: Force reset of Smoothing Buffers to prevent "Frozen Numbers"
+        prevSmoothedRef.current = null;
+        metricsBuffer.current = [];
+
         // If we are in an active state but stream is missing or inactive, try to restore
         if (['CALIBRATION', 'EXERCISE'].includes(appState)) {
           if (!stream || !stream.active) {
