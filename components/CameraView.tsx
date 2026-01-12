@@ -50,28 +50,28 @@ const CameraView: React.FC<Props> = ({ onMetricsUpdate, stream }) => {
       const timestamp = Date.now() / 1000;
 
       // 1. ADVANCED SMOOTHING (One Euro Filter)
-      // Only smooth indices we care about to save perf
-      const indicesToSmooth = [
-        ...Object.values(LANDMARK_INDICES).filter(v => typeof v === 'number'), // Single points
+      // DEDUPLICATE INDICES to prevent multiple filter steps per frame (Causes NaN)
+      const indicesToSmooth = Array.from(new Set([
+        ...Object.values(LANDMARK_INDICES).filter(v => typeof v === 'number') as number[],
         ...LANDMARK_INDICES.MANDIBLE_PATH,
-        ...[377, 400, 378, 148, 175, 150] // Extra chin points for Centroid
-      ];
+        ...[377, 400, 378, 148, 175, 150]
+      ]));
 
-      const smoothedLandmarks = [...rawLandmarks]; // Copy array
+      const smoothedLandmarks = [...rawLandmarks];
 
-      indicesToSmooth.forEach((idx: any) => {
-        if (typeof idx === 'number') {
-          const f = getFilters(idx);
-          smoothedLandmarks[idx] = {
-            x: f.x.filter(rawLandmarks[idx].x, timestamp),
-            y: f.y.filter(rawLandmarks[idx].y, timestamp),
-            z: f.z.filter(rawLandmarks[idx].z, timestamp)
-          };
-        }
+      indicesToSmooth.forEach((idx) => {
+        const f = getFilters(idx);
+        smoothedLandmarks[idx] = {
+          x: f.x.filter(rawLandmarks[idx].x, timestamp),
+          y: f.y.filter(rawLandmarks[idx].y, timestamp),
+          z: f.z.filter(rawLandmarks[idx].z, timestamp)
+        };
       });
 
-      // 2. VIRTUAL CHIN (Centroid Calculation)
-      // Robust Chin = Average of [152 (Chin Tip) + Neighbors]
+      // 2. VIRTUAL CHIN (Metric Stability ONLY)
+      // We use a clone for metrics to not affect the visual drawing (which needs natural shape)
+      const metricLandmarks = [...smoothedLandmarks];
+
       const chinIndices = [152, 377, 400, 378, 148, 175, 150];
       const virtualChin = { x: 0, y: 0, z: 0 };
       chinIndices.forEach(idx => {
@@ -83,14 +83,14 @@ const CameraView: React.FC<Props> = ({ onMetricsUpdate, stream }) => {
       virtualChin.y /= chinIndices.length;
       virtualChin.z /= chinIndices.length;
 
-      // Inject Virtual Chin back into index 152 for the metrics engine to use
-      smoothedLandmarks[152] = virtualChin;
+      // Inject Virtual Chin into METRIC array only
+      metricLandmarks[152] = virtualChin;
 
-      // 3. CALCULATE METRICS
-      const metrics = calculateMetrics(smoothedLandmarks);
-      onMetricsUpdate(metrics, smoothedLandmarks);
+      // 3. CALCULATE METRICS (Using Robust Virtual Chin)
+      const metrics = calculateMetrics(metricLandmarks);
+      onMetricsUpdate(metrics, metricLandmarks);
 
-      // 4. DRAWING
+      // 4. DRAWING (Using Natural Smoothed Landmarks)
       canvasCtx.lineWidth = 2;
       canvasCtx.strokeStyle = COLORS.RELAXX_GREEN;
 
