@@ -94,6 +94,7 @@ const CameraView: React.FC<Props> = ({ onMetricsUpdate, stream, tare }) => {
       const displayMetrics = { ...metrics };
       if (tare) {
         displayMetrics.lateralDeviation -= tare.lateral;
+        displayMetrics.openingAmplitude = Math.max(0, displayMetrics.openingAmplitude - tare.opening);
       }
 
       onMetricsUpdate(metrics, metricLandmarks);

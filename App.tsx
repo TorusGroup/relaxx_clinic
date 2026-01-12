@@ -38,7 +38,7 @@ const App: React.FC = () => {
   const getGuidance = () => {
     switch (appState) {
       case 'PERMISSION_REQUEST': return { m: "Iniciando inteligência diagnóstica Relaxx.", s: "Sincronizando Sensores" };
-      case 'CALIBRATION': return { m: "Mantenha o rosto parado e relaxado.", s: "Calibrando Zero Biológico..." }; // Updated text
+      case 'CALIBRATION': return { m: "Mantenha o rosto ABSOLUTAMENTE IMÓVEL.", s: "Calibrando Zero Biológico..." };
       case 'EXERCISE': return { m: `Abra a boca suavemente (${repsCount}/${REPS_REQUIRED}).`, s: "Capturando Movimento" };
       case 'LEAD_FORM': return { m: "Dados capturados. Prepare-se para o laudo.", s: "Criptografando Telemetria" };
       default: return { m: "", s: "" };
@@ -79,8 +79,7 @@ const App: React.FC = () => {
     // Apply Taring (Subtract Calibration Offset)
     if (currentAppState === 'EXERCISE' || currentAppState === 'LEAD_FORM') {
       smoothed.lateralDeviation -= tareRef.current.lateral;
-      // We generally don't tare opening, as 0 opening is physically 0 lips closed.
-      // But lateral deviation has a natural asymmetry bias we want to zero out.
+      smoothed.openingAmplitude = Math.max(0, smoothed.openingAmplitude - tareRef.current.opening);
     }
 
     setMetrics(smoothed);
@@ -90,16 +89,27 @@ const App: React.FC = () => {
       if (smoothed.isCentered) {
         calibrationBuffer.current.push(smoothed);
 
-        // Require 30 frames (~1s at 30fps) of STABILITY to calibrate
+        // Require 30 frames (~1s at 30fps)
         if (calibrationBuffer.current.length > 30) {
-          // Calculate Average Bias
-          const avgLateral = calibrationBuffer.current.reduce((sum, m) => sum + m.lateralDeviation, 0) / calibrationBuffer.current.length;
+          // STABILITY CHECK (Standard Deviation)
+          const mean = calibrationBuffer.current.reduce((sum, m) => sum + m.lateralDeviation, 0) / calibrationBuffer.current.length;
+          const variance = calibrationBuffer.current.reduce((sum, m) => sum + Math.pow(m.lateralDeviation - mean, 2), 0) / calibrationBuffer.current.length;
+          const stdDev = Math.sqrt(variance);
 
-          tareRef.current = { lateral: avgLateral, opening: 0 };
-          console.log("Auto-Calibration Completed. Tare Offset:", tareRef.current);
+          // Threshold: 0.5u (Strict stability) used to reject "moving" calibrations
+          if (stdDev < 0.5) {
+            const avgOpening = calibrationBuffer.current.reduce((sum, m) => sum + m.openingAmplitude, 0) / calibrationBuffer.current.length;
 
-          calibrationBuffer.current = []; // Reset
-          setAppState('EXERCISE');
+            tareRef.current = { lateral: mean, opening: avgOpening };
+            console.log("Auto-Calibration Completed. Tare Offset:", tareRef.current, "StdDev:", stdDev);
+
+            calibrationBuffer.current = []; // Reset
+            setAppState('EXERCISE');
+          } else {
+            console.log("Calibration Rejected - Too much movement. StdDev:", stdDev.toFixed(2));
+            // Keep the last 15 frames to try again quickly (rolling buffer), discard oldest 15
+            calibrationBuffer.current = calibrationBuffer.current.slice(15);
+          }
         }
       } else {
         // Reset buffer if user moves out of center during calibration
