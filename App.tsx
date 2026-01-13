@@ -311,18 +311,24 @@ function App() {
           )}
 
           {appState === 'EXERCISE' && (
-            <div className="fixed bottom-12 md:bottom-20 left-1/2 -translate-x-1/2 w-full max-w-[240px] z-50">
-              <div className="h-1 w-full bg-white/10 rounded-full overflow-hidden mb-3">
-                <div
-                  className="h-full bg-gradient-to-r from-[#00FF66]/40 to-[#00FF66] transition-all duration-700"
-                  style={{ width: `${(repsCount / REPS_REQUIRED) * 100}%` }}
-                />
+            <>
+              {/* V9.0: Trajectory Graph Overlay (Side Widget) - Mobile Friendly */}
+              <div className="absolute top-24 right-4 z-40 w-[140px] md:w-[200px] opacity-90 hover:opacity-100 transition-opacity">
+                <TrajectoryGraph path={trajectoryPath} width={200} height={200} />
               </div>
-              <div className="flex justify-between items-center px-1">
-                <span className="text-[8px] text-[#00FF66] font-black uppercase tracking-widest">Protocolo Relaxx</span>
-                <span className="text-white font-mono text-xs">{repsCount}/{REPS_REQUIRED}</span>
+              <div className="fixed bottom-12 md:bottom-20 left-1/2 -translate-x-1/2 w-full max-w-[240px] z-50">
+                <div className="h-1 w-full bg-white/10 rounded-full overflow-hidden mb-3">
+                  <div
+                    className="h-full bg-gradient-to-r from-[#00FF66]/40 to-[#00FF66] transition-all duration-700"
+                    style={{ width: `${(repsCount / REPS_REQUIRED) * 100}%` }}
+                  />
+                </div>
+                <div className="flex justify-between items-center px-1">
+                  <span className="text-[8px] text-[#00FF66] font-black uppercase tracking-widest">Protocolo Relaxx</span>
+                  <span className="text-white font-mono text-xs">{repsCount}/{REPS_REQUIRED}</span>
+                </div>
               </div>
-            </div>
+            </>
           )}
         </>
       )}

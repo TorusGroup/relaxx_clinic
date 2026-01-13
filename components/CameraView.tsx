@@ -132,18 +132,29 @@ const CameraView: React.FC<Props> = ({ onCameraReady, onMetricsUpdate, onTraject
       // Let's only draw the Mandible Path cleanly.
       const mandibleIndices = LANDMARK_INDICES.MANDIBLE_PATH; // e.g., 365..152..136
 
-      canvasCtx.beginPath();
-      // Start
-      const startP = smoothedLandmarks[mandibleIndices[0]];
-      canvasCtx.moveTo((1 - startP.x) * width, startP.y * height);
+      // Collect points relative to canvas
+      const jawPoints = mandibleIndices.map(idx => {
+        const p = smoothedLandmarks[idx];
+        return { x: (1 - p.x) * width, y: p.y * height }; // Mirror X applied here
+      });
 
-      // Simple line connect for now, or Quadratic?
-      // The Dense Mesh is dense enough that LineTo looks curved.
-      // BUT user said "follows the oval movement, no dots".
-      // We'll stroke the path.
-      for (let i = 1; i < mandibleIndices.length; i++) {
-        const p = smoothedLandmarks[mandibleIndices[i]];
-        canvasCtx.lineTo((1 - p.x) * width, p.y * height);
+      if (jawPoints.length > 2) {
+        canvasCtx.beginPath();
+        canvasCtx.moveTo(jawPoints[0].x, jawPoints[0].y);
+
+        // Smooth Curve Strategy: Quadratic Bezier to Midpoints
+        for (let i = 1; i < jawPoints.length - 2; i++) {
+          const xc = (jawPoints[i].x + jawPoints[i + 1].x) / 2;
+          const yc = (jawPoints[i].y + jawPoints[i + 1].y) / 2;
+          canvasCtx.quadraticCurveTo(jawPoints[i].x, jawPoints[i].y, xc, yc);
+        }
+        // Final segments
+        canvasCtx.quadraticCurveTo(
+          jawPoints[jawPoints.length - 2].x,
+          jawPoints[jawPoints.length - 2].y,
+          jawPoints[jawPoints.length - 1].x,
+          jawPoints[jawPoints.length - 1].y
+        );
       }
 
       canvasCtx.lineWidth = 2; // Thinner, more elegant
