@@ -118,7 +118,7 @@ const TrajectoryGraph: React.FC<Props> = ({ path, width = 200, height = 300 }) =
     }, [path, width, height]);
 
     return (
-        <div className="bg-[#002D20]/80 backdrop-blur-md border border-white/10 rounded-2xl p-4 shadow-xl">
+        <div className="bg-gray-900/40 backdrop-blur-md border border-white/10 rounded-xl p-3 shadow-2xl">
             <div className="flex justify-between items-center mb-2">
                 <h3 className="text-[10px] font-bold text-[#00FF66] uppercase tracking-widest">Trajetória Real-time</h3>
                 <div className="flex gap-1">

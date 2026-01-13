@@ -229,8 +229,6 @@ function App() {
     setAppState('REPORTING');
   };
 
-
-
   const handleCameraPermission = async () => {
     try {
       if (stream) {
@@ -248,7 +246,7 @@ function App() {
       setStream(mediaStream);
       // Only set state if we are in the initial request phase
       if (appState === 'PERMISSION_REQUEST') {
-        setAppState('CALIBRATION');
+        setAppState('COUNTDOWN'); // Fix: Go to Countdown Analysis
       }
     } catch (err) {
       console.error("Camera denied:", err);
@@ -291,7 +289,8 @@ function App() {
       {appState === 'ONBOARDING' && <Onboarding onStart={() => setAppState('PERMISSION_REQUEST')} />}
 
       {/* CAMERA ALWAYS ACTIVE in these states to prevent black screen */}
-      {(appState === 'CALIBRATION' || appState === 'EXERCISE' || appState === 'PERMISSION_REQUEST' || appState === 'LEAD_FORM') && (
+      {/* Added COUNTDOWN to this list so camera stays on behind the overlay */}
+      {['PERMISSION_REQUEST', 'COUNTDOWN', 'CALIBRATION', 'EXERCISE', 'LEAD_FORM'].includes(appState) && (
         <>
           {stream && (
             <CameraView
@@ -299,23 +298,34 @@ function App() {
               onMetricsUpdate={handleMetricsUpdate}
               stream={stream}
               tare={tareRef.current}
+              onTrajectoryUpdate={setTrajectoryPath}
             />
           )}
 
-          {appState !== 'LEAD_FORM' && (
-            <GuidanceSystem message={getGuidance().m} subMessage={getGuidance().s} />
+          {appState === 'COUNTDOWN' && (
+            <CountdownOverlay onComplete={() => {
+              // Reset buffer to ensure clean start
+              metricsBuffer.current = [];
+              setAppState('EXERCISE');
+            }} />
           )}
 
-          {appState !== 'LEAD_FORM' && (
-            <MetricsPanel metrics={metrics} isRecording={appState === 'EXERCISE'} />
+          {/* GUIDANCE & METRICS (Hidden during form/permission/countdown) */}
+          {['CALIBRATION', 'EXERCISE'].includes(appState) && (
+            <>
+              <GuidanceSystem message={getGuidance().m} subMessage={getGuidance().s} />
+              <MetricsPanel metrics={metrics} isRecording={appState === 'EXERCISE'} />
+            </>
           )}
 
           {appState === 'EXERCISE' && (
             <>
-              {/* V9.0: Trajectory Graph Overlay (Side Widget) - Mobile Friendly */}
-              <div className="absolute top-24 right-4 z-40 w-[140px] md:w-[200px] opacity-90 hover:opacity-100 transition-opacity">
-                <TrajectoryGraph path={trajectoryPath} width={200} height={200} />
+              {/* V9.2: Trajectory Graph Overlay (Centered Right, Glass) */}
+              <div className="absolute top-1/2 -translate-y-1/2 right-2 z-40 w-[120px]">
+                <TrajectoryGraph path={trajectoryPath} width={120} height={180} />
               </div>
+
+              {/* Progress Bar (Bottom) */}
               <div className="fixed bottom-12 md:bottom-20 left-1/2 -translate-x-1/2 w-full max-w-[240px] z-50">
                 <div className="h-1 w-full bg-white/10 rounded-full overflow-hidden mb-3">
                   <div
@@ -330,51 +340,51 @@ function App() {
               </div>
             </>
           )}
+
+          {appState === 'PERMISSION_REQUEST' && (
+            <FadeIn className="absolute inset-0 z-[210] flex items-center justify-center p-8 bg-black/60 backdrop-blur-md" duration={800}>
+              <div className="max-w-sm w-full bg-[#002D20] border border-white/10 p-10 rounded-[48px] text-center space-y-8">
+                <div className="w-16 h-16 bg-[#00FF66]/10 rounded-3xl mx-auto flex items-center justify-center animate-pulse">
+                  <svg className="w-8 h-8 text-[#00FF66]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                </div>
+                <p className="text-white text-lg font-medium">Precisamos acessar sua câmera para iniciar a biometria.</p>
+                {permissionError && <p className="text-red-400 text-xs font-bold">{permissionError}</p>}
+                <button
+                  onClick={handleCameraPermission}
+                  className="btn-relaxx w-full py-5 rounded-full font-black uppercase tracking-widest text-[10px] active:scale-95 transition-transform"
+                >
+                  Autorizar Câmera
+                </button>
+              </div>
+            </FadeIn>
+          )}
+
+          {appState === 'LEAD_FORM' && (
+            <FadeIn className="fixed inset-0 z-[300] flex items-center justify-center p-4 bg-black/60 backdrop-blur-md" duration={1000}>
+              <div className="max-w-md w-full bg-[#002D20]/90 backdrop-blur-xl p-8 md:p-12 rounded-[48px] border border-white/10 shadow-2xl space-y-8">
+                <div className="text-center space-y-2">
+                  <h2 className="text-[#00FF66] text-xs font-black uppercase tracking-[0.4em]">Análise Concluída</h2>
+                  <p className="text-white text-xl font-bold">Identifique-se para o Laudo</p>
+                </div>
+                <form onSubmit={handleLeadSubmit} className="space-y-4">
+                  <input required className="w-full bg-white/5 border border-white/10 rounded-2xl px-6 py-4 text-white focus:border-[#00FF66] outline-none transition-colors" placeholder="Nome Completo" value={userData.name} onChange={e => setUserData({ ...userData, name: e.target.value })} />
+                  <input required className="w-full bg-white/5 border border-white/10 rounded-2xl px-6 py-4 text-white focus:border-[#00FF66] outline-none transition-colors" placeholder="WhatsApp" type="tel" value={userData.whatsapp} onChange={e => setUserData({ ...userData, whatsapp: e.target.value })} />
+                  <input required className="w-full bg-white/5 border border-white/10 rounded-2xl px-6 py-4 text-white focus:border-[#00FF66] outline-none transition-colors" placeholder="E-mail Corporativo" type="email" value={userData.email} onChange={e => setUserData({ ...userData, email: e.target.value })} />
+                  <button disabled={isLoadingReport} className="btn-relaxx w-full py-5 rounded-full font-black uppercase tracking-[0.3em] text-[10px] mt-4 shadow-2xl">
+                    {isLoadingReport ? 'Sincronizando...' : 'Gerar Bio-Laudo Digital'}
+                  </button>
+                </form>
+              </div>
+            </FadeIn>
+          )}
+
+          {appState === 'REPORTING' && report && (
+            <ReportView report={report} onReset={() => window.location.reload()} />
+          )}
         </>
-      )}
-
-      {appState === 'PERMISSION_REQUEST' && (
-        <FadeIn className="absolute inset-0 z-[210] flex items-center justify-center p-8 bg-black/60 backdrop-blur-md" duration={800}>
-          <div className="max-w-sm w-full bg-[#002D20] border border-white/10 p-10 rounded-[48px] text-center space-y-8">
-            <div className="w-16 h-16 bg-[#00FF66]/10 rounded-3xl mx-auto flex items-center justify-center animate-pulse">
-              <svg className="w-8 h-8 text-[#00FF66]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
-            </div>
-            <p className="text-white text-lg font-medium">Precisamos acessar sua câmera para iniciar a biometria.</p>
-            {permissionError && <p className="text-red-400 text-xs font-bold">{permissionError}</p>}
-            <button
-              onClick={handleCameraPermission}
-              className="btn-relaxx w-full py-5 rounded-full font-black uppercase tracking-widest text-[10px] active:scale-95 transition-transform"
-            >
-              Autorizar Câmera
-            </button>
-          </div>
-        </FadeIn>
-      )}
-
-      {appState === 'LEAD_FORM' && (
-        <FadeIn className="fixed inset-0 z-[300] flex items-center justify-center p-4 bg-black/60 backdrop-blur-md" duration={1000}>
-          <div className="max-w-md w-full bg-[#002D20]/90 backdrop-blur-xl p-8 md:p-12 rounded-[48px] border border-white/10 shadow-2xl space-y-8">
-            <div className="text-center space-y-2">
-              <h2 className="text-[#00FF66] text-xs font-black uppercase tracking-[0.4em]">Análise Concluída</h2>
-              <p className="text-white text-xl font-bold">Identifique-se para o Laudo</p>
-            </div>
-            <form onSubmit={handleLeadSubmit} className="space-y-4">
-              <input required className="w-full bg-white/5 border border-white/10 rounded-2xl px-6 py-4 text-white focus:border-[#00FF66] outline-none transition-colors" placeholder="Nome Completo" value={userData.name} onChange={e => setUserData({ ...userData, name: e.target.value })} />
-              <input required className="w-full bg-white/5 border border-white/10 rounded-2xl px-6 py-4 text-white focus:border-[#00FF66] outline-none transition-colors" placeholder="WhatsApp" type="tel" value={userData.whatsapp} onChange={e => setUserData({ ...userData, whatsapp: e.target.value })} />
-              <input required className="w-full bg-white/5 border border-white/10 rounded-2xl px-6 py-4 text-white focus:border-[#00FF66] outline-none transition-colors" placeholder="E-mail Corporativo" type="email" value={userData.email} onChange={e => setUserData({ ...userData, email: e.target.value })} />
-              <button disabled={isLoadingReport} className="btn-relaxx w-full py-5 rounded-full font-black uppercase tracking-[0.3em] text-[10px] mt-4 shadow-2xl">
-                {isLoadingReport ? 'Sincronizando...' : 'Gerar Bio-Laudo Digital'}
-              </button>
-            </form>
-          </div>
-        </FadeIn>
-      )}
-
-      {appState === 'REPORTING' && report && (
-        <ReportView report={report} onReset={() => window.location.reload()} />
       )}
     </div>
   );
-};
+}
 
 export default App;

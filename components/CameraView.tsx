@@ -121,7 +121,7 @@ const CameraView: React.FC<Props> = ({ onCameraReady, onMetricsUpdate, onTraject
 
       // Export to Parent
       if (onTrajectoryUpdate) {
-        onTrajectoryUpdate(trajectoryRef.current);
+        onTrajectoryUpdate([...trajectoryRef.current]); // Fix: Send copy to trigger React re-render
       }
 
 
@@ -229,17 +229,7 @@ const CameraView: React.FC<Props> = ({ onCameraReady, onMetricsUpdate, onTraject
       const chin = smoothedLandmarks[LANDMARK_INDICES.CHIN]; // Now Virtual Chin
       drawLine(forehead, chin, COLORS.RELAXX_GREEN, 0.2);
 
-      // Path mandibular
-      canvasCtx.globalAlpha = 0.6;
-      canvasCtx.beginPath();
-      LANDMARK_INDICES.MANDIBLE_PATH.forEach((idx, i) => {
-        const p = smoothedLandmarks[idx];
-        const x = (1 - p.x) * canvasRef.current!.width;
-        const y = p.y * canvasRef.current!.height;
-        if (i === 0) canvasCtx.moveTo(x, y);
-        else canvasCtx.lineTo(x, y);
-      });
-      canvasCtx.stroke();
+
 
       const upper = smoothedLandmarks[LANDMARK_INDICES.UPPER_LIP];
       const lower = smoothedLandmarks[LANDMARK_INDICES.LOWER_LIP];
