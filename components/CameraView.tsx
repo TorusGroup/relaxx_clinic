@@ -7,10 +7,12 @@ import { OneEuroFilter } from '../utils/oneEuroFilter';
 interface Props {
   onMetricsUpdate: (metrics: DiagnosticMetrics, landmarks: Landmark[]) => void;
   stream: MediaStream | null;
-  tare: { lateral: number; opening: number }; // Receive tare offset
+  tare?: { lateral: number; opening: number }; // Made optional to prevent strict errors if missing
+  onCameraReady: () => void;
+  onTrajectoryUpdate?: (path: { x: number, y: number }[]) => void; // V9.0
 }
 
-const CameraView: React.FC<Props> = ({ onMetricsUpdate, stream, tare }) => {
+const CameraView: React.FC<Props> = ({ onCameraReady, onMetricsUpdate, onTrajectoryUpdate, stream, tare }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const faceMeshRef = useRef<any>(null);
@@ -112,35 +114,47 @@ const CameraView: React.FC<Props> = ({ onMetricsUpdate, stream, tare }) => {
       smoothedLandmarks[152] = lockedChin;
 
 
-      // --- V8.0 COMET TRAIL (Trajectory Visualization) ---
-      // Add current chin position to history
-      const { width, height } = canvasRef.current;
-      const chinPoint = { x: lockedChin.x * width, y: lockedChin.y * height };
+      // --- V9.0 EXTRACT TRAJECTORY (No Canvas Drawing Here) ---
+      // Capture Normalized Points for the Side Graph
+      trajectoryRef.current.push(lockedChin); // Store normalized 0..1
+      if (trajectoryRef.current.length > 50) trajectoryRef.current.shift();
 
-      trajectoryRef.current.push(chinPoint);
-      if (trajectoryRef.current.length > 50) trajectoryRef.current.shift(); // Keep last 50 frames
-
-      // Draw Trail
-      if (trajectoryRef.current.length > 1) {
-        canvasCtx.beginPath();
-        canvasCtx.moveTo(trajectoryRef.current[0].x, trajectoryRef.current[0].y);
-        // Draw smooth curve through points? or just lines for speed
-        for (let i = 1; i < trajectoryRef.current.length; i++) {
-          canvasCtx.lineTo(trajectoryRef.current[i].x, trajectoryRef.current[i].y);
-        }
-        canvasCtx.lineCap = 'round';
-        canvasCtx.lineJoin = 'round';
-        canvasCtx.lineWidth = 4;
-        // Gradient Fade
-        const gradient = canvasCtx.createLinearGradient(
-          trajectoryRef.current[0].x, trajectoryRef.current[0].y,
-          chinPoint.x, chinPoint.y
-        );
-        gradient.addColorStop(0, 'rgba(0, 255, 102, 0)');
-        gradient.addColorStop(1, 'rgba(0, 255, 102, 0.8)');
-        canvasCtx.strokeStyle = gradient;
-        canvasCtx.stroke();
+      // Export to Parent
+      if (onTrajectoryUpdate) {
+        onTrajectoryUpdate(trajectoryRef.current);
       }
+
+
+      // --- V9.0 CLEAN CHIN RENDER (Smooth Curve, No Dots) ---
+      const { width, height } = canvasRef.current;
+
+      // Draw Face Oval (Partial) or just Chin?
+      // Let's only draw the Mandible Path cleanly.
+      const mandibleIndices = LANDMARK_INDICES.MANDIBLE_PATH; // e.g., 365..152..136
+
+      canvasCtx.beginPath();
+      // Start
+      const startP = smoothedLandmarks[mandibleIndices[0]];
+      canvasCtx.moveTo((1 - startP.x) * width, startP.y * height);
+
+      // Simple line connect for now, or Quadratic?
+      // The Dense Mesh is dense enough that LineTo looks curved.
+      // BUT user said "follows the oval movement, no dots".
+      // We'll stroke the path.
+      for (let i = 1; i < mandibleIndices.length; i++) {
+        const p = smoothedLandmarks[mandibleIndices[i]];
+        canvasCtx.lineTo((1 - p.x) * width, p.y * height);
+      }
+
+      canvasCtx.lineWidth = 2; // Thinner, more elegant
+      canvasCtx.strokeStyle = '#00FF66';
+      canvasCtx.shadowBlur = 15;
+      canvasCtx.shadowColor = '#00FF66';
+      canvasCtx.lineCap = 'round';
+      canvasCtx.lineJoin = 'round';
+      canvasCtx.stroke();
+
+      // DO NOT draw individual dots anymore (Removed the 'arc' loop)
 
 
       // 2. VIRTUAL CHIN (Metric Stability ONLY)

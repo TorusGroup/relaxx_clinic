@@ -6,6 +6,8 @@ import MetricsPanel from './components/MetricsPanel';
 import ReportView from './components/ReportView';
 import GuidanceSystem from './components/GuidanceSystem';
 import FadeIn from './components/FadeIn'; // V7.0
+import CountdownOverlay from './components/CountdownOverlay'; // V9.0 PROTOCOL
+import TrajectoryGraph from './components/TrajectoryGraph'; // V9.0 VISUALS
 import { AppState, DiagnosticMetrics, TelemetryData, Landmark, UserData } from './types';
 import { generateClinicalReport } from './services/geminiService';
 
@@ -13,13 +15,13 @@ const BUFFER_SIZE = 5;
 const REPS_REQUIRED = 5;
 const OPEN_THRESHOLD = 22; // Ajustado para ser mais responsivo
 
-const App: React.FC = () => {
+function App() {
   const [appState, setAppState] = useState<AppState>('ONBOARDING');
   const [metrics, setMetrics] = useState<DiagnosticMetrics>({
     verticalAlignment: 0,
     openingAmplitude: 0,
     lateralDeviation: 0,
-    isCentered: false
+    isCentered: true
   });
 
   const [repsCount, setRepsCount] = useState(0);
@@ -27,6 +29,11 @@ const App: React.FC = () => {
   const [userData, setUserData] = useState<UserData>({ name: '', whatsapp: '', email: '' });
   const [report, setReport] = useState<string | null>(null);
   const [isLoadingReport, setIsLoadingReport] = useState(false);
+  const [permissionError, setPermissionError] = useState<string | null>(null);
+  const [stream, setStream] = useState<MediaStream | null>(null); // Restored
+
+  // V9.0 STATE
+  const [trajectoryPath, setTrajectoryPath] = useState<{ x: number, y: number }[]>([]);
 
   // Taring (Auto-Calibration) Refs
   const tareRef = useRef({ lateral: 0, opening: 0 });
@@ -222,8 +229,7 @@ const App: React.FC = () => {
     setAppState('REPORTING');
   };
 
-  const [stream, setStream] = useState<MediaStream | null>(null);
-  const [permissionError, setPermissionError] = useState<string | null>(null);
+
 
   const handleCameraPermission = async () => {
     try {
@@ -289,6 +295,7 @@ const App: React.FC = () => {
         <>
           {stream && (
             <CameraView
+              onCameraReady={() => { }}
               onMetricsUpdate={handleMetricsUpdate}
               stream={stream}
               tare={tareRef.current}
