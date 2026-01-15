@@ -47,10 +47,10 @@ function App() {
 
   const getGuidance = () => {
     switch (appState) {
-      case 'PERMISSION_REQUEST': return { m: "Iniciando inteligência diagnóstica Relaxx.", s: "Sincronizando Sensores" };
-      case 'CALIBRATION': return { m: "Mantenha o rosto ABSOLUTAMENTE IMÓVEL.", s: "Calibrando Zero Biológico..." };
-      case 'EXERCISE': return { m: `Abra a boca suavemente (${repsCount}/${REPS_REQUIRED}).`, s: "Capturando Movimento" };
-      case 'LEAD_FORM': return { m: "Dados capturados. Prepare-se para o laudo.", s: "Criptografando Telemetria" };
+      case 'PERMISSION_REQUEST': return { m: "Para analisarmos seu movimento, precisamos ver você.", s: "Sincronizando Sensores" };
+      case 'CALIBRATION': return { m: "Respire fundo. Mantenha o olhar fixo.", s: "Encontrando seu ponto neutro..." };
+      case 'EXERCISE': return { m: `Abra a boca suavemente o máximo que conseguir (${repsCount}/${REPS_REQUIRED}).`, s: "Capturando Movimento" };
+      case 'LEAD_FORM': return { m: "Dados capturados. Prepare-se para o laudo.", s: "Processando seus dados..." };
       default: return { m: "", s: "" };
     }
   };
@@ -245,7 +245,7 @@ function App() {
           lastRepTime.current = now;
 
           // AUTO-RESET GRAPH: Clear trajectory on every closed mouth (Cleaner Visuals)
-          setResetTrigger(t => t + 1);
+          // setResetTrigger(t => t + 1);
         } else {
           // Just close state, don't count if too fast
           setIsMouthOpen(false);
@@ -421,7 +421,7 @@ function App() {
                 <div className="w-16 h-16 bg-[#00FF66]/10 rounded-3xl mx-auto flex items-center justify-center animate-pulse">
                   <svg className="w-8 h-8 text-[#00FF66]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
                 </div>
-                <p className="text-white text-lg font-medium">Precisamos acessar sua câmera para iniciar a biometria.</p>
+                <p className="text-white text-lg font-medium">Para analisarmos seu movimento, precisamos ver você.</p>
                 {permissionError && <p className="text-red-400 text-xs font-bold">{permissionError}</p>}
                 <button
                   onClick={handleCameraPermission}
@@ -438,14 +438,14 @@ function App() {
               <div className="max-w-md w-full bg-[#002D20]/90 backdrop-blur-xl p-8 md:p-12 rounded-[48px] border border-white/10 shadow-2xl space-y-8">
                 <div className="text-center space-y-2">
                   <h2 className="text-[#00FF66] text-xs font-black uppercase tracking-[0.4em]">Análise Concluída</h2>
-                  <p className="text-white text-xl font-bold">Identifique-se para o Laudo</p>
+                  <p className="text-white text-xl font-bold">Qual seu melhor contato para enviarmos a sua análise?</p>
                 </div>
                 <form onSubmit={handleLeadSubmit} className="space-y-4">
                   <input required className="w-full bg-white/5 border border-white/10 rounded-2xl px-6 py-4 text-white focus:border-[#00FF66] outline-none transition-colors" placeholder="Nome Completo" value={userData.name} onChange={e => setUserData({ ...userData, name: e.target.value })} />
                   <input required className="w-full bg-white/5 border border-white/10 rounded-2xl px-6 py-4 text-white focus:border-[#00FF66] outline-none transition-colors" placeholder="WhatsApp" type="tel" value={userData.whatsapp} onChange={e => setUserData({ ...userData, whatsapp: e.target.value })} />
                   <input required className="w-full bg-white/5 border border-white/10 rounded-2xl px-6 py-4 text-white focus:border-[#00FF66] outline-none transition-colors" placeholder="E-mail Corporativo" type="email" value={userData.email} onChange={e => setUserData({ ...userData, email: e.target.value })} />
                   <button disabled={isLoadingReport} className="btn-relaxx w-full py-5 rounded-full font-black uppercase tracking-[0.3em] text-[10px] mt-4 shadow-2xl">
-                    {isLoadingReport ? 'Sincronizando...' : 'Gerar Bio-Laudo Digital'}
+                    {isLoadingReport ? 'Sincronizando...' : 'Ver minha análise completa'}
                   </button>
                 </form>
               </div>
