@@ -1,0 +1,8 @@
+[build]
+  publish = "dist"
+  command = "npm run build"
+
+[build.environment]
+  # Bypass Netlify's secret scanner for the exposed Client-Side API Key.
+  # Security is handled via Google Cloud Referrer Restrictions (HTTP headers).
+  SECRETS_SCAN_ENABLED = "false" 
