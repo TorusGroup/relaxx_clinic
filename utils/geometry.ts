@@ -2,6 +2,7 @@
 export interface Point {
     x: number;
     y: number;
+    z?: number;
 }
 
 /**
@@ -43,3 +44,45 @@ export function chaikinSmooth(points: Point[], iterations: number = 2, closed: b
 
     return currentPoints;
 }
+
+/**
+ * Calculates the angle (in radians) between two points relative to horizontal.
+ * Used for Head Roll detection (Eyes or Tragus).
+ */
+export const calculateRollAngle = (p1: Point, p2: Point): number => {
+    return Math.atan2(p2.y - p1.y, p2.x - p1.x);
+};
+
+/**
+ * Rotates a point around a center by a given angle (radians).
+ * Used to correct Head Tilt before metric calculation.
+ */
+export const rotatePoint = (point: Point, angle: number, center: Point = { x: 0, y: 0 }): Point => {
+    const cos = Math.cos(angle);
+    const sin = Math.sin(angle);
+    const dx = point.x - center.x;
+    const dy = point.y - center.y;
+
+    return {
+        x: center.x + (dx * cos - dy * sin),
+        y: center.y + (dx * sin + dy * cos),
+        z: point.z // Pass through Z unchanged
+    };
+};
+
+/**
+ * Calculates Euclidean distance between two points.
+ */
+export const distance = (p1: Point, p2: Point): number => {
+    return Math.sqrt(Math.pow(p2.x - p1.x, 2) + Math.pow(p2.y - p1.y, 2));
+};
+
+/**
+ * Converts degrees to radians.
+ */
+export const toRadians = (deg: number): number => deg * (Math.PI / 180);
+
+/**
+ * Converts radians to degrees.
+ */
+export const toDegrees = (rad: number): number => rad * (180 / Math.PI);

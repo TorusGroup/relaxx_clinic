@@ -2,7 +2,7 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { TelemetryData } from "../types";
 
-export const generateClinicalReport = async (history: TelemetryData[]): Promise<string> => {
+export const generateClinicalReport = async (history: TelemetryData[], clickCount: number = 0): Promise<string> => {
   try {
     const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
     if (!apiKey) {
@@ -16,16 +16,19 @@ export const generateClinicalReport = async (history: TelemetryData[]): Promise<
 
     const maxOpening = Math.max(...history.map(h => h.metrics.openingAmplitude));
     const avgDeviation = history.reduce((acc, h) => acc + Math.abs(h.metrics.lateralDeviation), 0) / history.length;
-    const maxDeviation = Math.max(...history.map(h => Math.abs(h.metrics.lateralDeviation)));
-    const stabilityIndex = history.length > 0 ? (100 - (avgDeviation * 2)) : 0;
+
+    // Safety check for empty history
+    const safeMaxOpening = isFinite(maxOpening) ? maxOpening : 0;
+    const safeAvgDeviation = isFinite(avgDeviation) ? avgDeviation : 0;
 
     const prompt = `
       ATUAÇÃO: Especialista em Bioestética Orofacial e Cadeias Musculares (Conceito Relaxx).
       OBJETIVO: Gerar uma PRÉ-AVALIAÇÃO BIOMECÂNICA (Triagem). NÃO É UM DIAGNÓSTICO MÉDICO FECHADO.
 
       DADOS BIOMÉTRICOS EXATOS (Baseie sua análise APENAS nestes números):
-      - Abertura Máxima: ${maxOpening.toFixed(2)}mm
-      - Desvio Lateral: ${avgDeviation.toFixed(2)}mm
+      - Abertura Máxima: ${safeMaxOpening.toFixed(2)}mm
+      - Desvio Lateral: ${safeAvgDeviation.toFixed(2)}mm
+      - Estalos/Clicks Detectados: ${clickCount}
       
       REGRAS DE INTERPRETAÇÃO (Siga estritamente):
       1. Se Abertura < 40mm: Classificar como "Limitação de Amplitude".
@@ -35,11 +38,13 @@ export const generateClinicalReport = async (history: TelemetryData[]): Promise<
       4. Se Desvio < 3mm: Classificar como "Padrão de Estabilidade Preservado". 
       5. Se Desvio > 3mm: Classificar como "Assimetria de Movimento Detectada".
 
+      6. Se Estalos > 0: ALERTAR sobre possível desarranjo interno (incoordenação côndilo-disco). Citar que estalos indicam atrito articular.
+
       DIRETRIZES ÉTICAS E DE TOM:
       - Seja objetivo e técnico. SEM emojis excessivos ou linguagem infantil.
       - NÃO inicie com frases como "Aqui está seu relatório" ou "Como IA...". Apenas entregue o laudo.
-      - Se os números estiverem normais (Regras 3 e 4), PARABENIZE a saúde funcional e sugira manutenção preventiva. NÃO INVENTE PROBLEMAS.
-      - Se houver desvios, explique a biomecânica (Efeito Dominó) e direcione para "Anamnese Clínica Detalhada" com um especialista, não para venda direta.
+      - Se os números estiverem normais (Regras 3, 4 e 6=0), PARABENIZE a saúde funcional e sugira manutenção preventiva. NÃO INVENTE PROBLEMAS.
+      - Se houver desvios ou estalos, explique a biomecânica (Efeito Dominó) e direcione para "Anamnese Clínica Detalhada" com um especialista, não para venda direta.
 
       ESTRUTURA DE SAÍDA (MARKDOWN):
       # 🧬 BIO-ANÁLISE DIGITAL (Triagem)

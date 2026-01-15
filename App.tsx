@@ -8,8 +8,10 @@ import GuidanceSystem from './components/GuidanceSystem';
 import FadeIn from './components/FadeIn'; // V7.0
 import CountdownOverlay from './components/CountdownOverlay'; // V9.0 PROTOCOL
 import TrajectoryGraph from './components/TrajectoryGraph'; // V9.0 VISUALS
+import Notification from './components/Notification'; // V10.0 UI
 import { AppState, DiagnosticMetrics, TelemetryData, Landmark, UserData } from './types';
 import { generateClinicalReport } from './services/geminiService';
+import { analyzeMotion, calculateATMScore } from './services/biomechanics'; // V9.0 Biomechanics
 
 const BUFFER_SIZE = 5;
 const REPS_REQUIRED = 5;
@@ -27,7 +29,9 @@ function App() {
   const [repsCount, setRepsCount] = useState(0);
   const [isMouthOpen, setIsMouthOpen] = useState(false);
   const [userData, setUserData] = useState<UserData>({ name: '', whatsapp: '', email: '' });
-  const [report, setReport] = useState<string | null>(null);
+
+  // V10.0 REPORT DATA
+  const [reportData, setReportData] = useState<{ text: string; score: number } | null>(null);
   const [isLoadingReport, setIsLoadingReport] = useState(false);
   const [permissionError, setPermissionError] = useState<string | null>(null);
   const [stream, setStream] = useState<MediaStream | null>(null); // Restored
@@ -49,7 +53,10 @@ function App() {
     switch (appState) {
       case 'PERMISSION_REQUEST': return { m: "Para analisarmos seu movimento, precisamos ver você.", s: "Sincronizando Sensores" };
       case 'CALIBRATION': return { m: "Respire fundo. Mantenha o olhar fixo.", s: "Encontrando seu ponto neutro..." };
-      case 'EXERCISE': return { m: `Abra a boca suavemente o máximo que conseguir (${repsCount}/${REPS_REQUIRED}).`, s: "Capturando Movimento" };
+      case 'EXERCISE': return {
+        m: isMouthOpen ? "Feche a boca suavemente" : "Abra a boca suavemente o máximo que conseguir",
+        s: `Protocolo Relaxx (${repsCount}/${REPS_REQUIRED})`
+      };
       case 'LEAD_FORM': return { m: "Dados capturados. Prepare-se para o laudo.", s: "Processando seus dados..." };
       default: return { m: "", s: "" };
     }
@@ -263,13 +270,29 @@ function App() {
   const handleLeadSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoadingReport(true);
-    const generatedReport = await generateClinicalReport(telemetryHistory.current);
-    setReport(generatedReport);
+    // V9.0: Include Click Count in Report Generation
+    const generatedText = await generateClinicalReport(telemetryHistory.current, clicksDetected);
+
+    // V10.0: Calculate Score
+    const avgMetrics = {
+      openingAmplitude: telemetryHistory.current.reduce((acc, h) => acc + h.metrics.openingAmplitude, 0) / Math.max(1, telemetryHistory.current.length),
+      lateralDeviation: telemetryHistory.current.reduce((acc, h) => acc + h.metrics.lateralDeviation, 0) / Math.max(1, telemetryHistory.current.length),
+      verticalAlignment: 0,
+      isCentered: true
+    };
+    const score = calculateATMScore(avgMetrics);
+
+    setReportData({ text: generatedText, score });
     setIsLoadingReport(false);
     setAppState('REPORTING');
   };
 
-  // V9.9: Accumulate Trajectory Points (App Centralized State)
+  // V9.0 Biomechanics
+  const [clicksDetected, setClicksDetected] = useState(0);
+  const [showClickWarning, setShowClickWarning] = useState(false);
+  const clickWarningTimeout = useRef<number | null>(null);
+
+  // V9.9 TRAJECTORY REFACTOR (Centralized State)
   const handleTrajectoryVector = useCallback((vector: { x: number, y: number }) => {
     // Only record if we are "In Rep" (Mouth Open)
     if (stateRef.current.isMouthOpen && stateRef.current.appState === 'EXERCISE') {
@@ -285,6 +308,19 @@ function App() {
           const last = prev[prev.length - 1];
           const dist = Math.sqrt(Math.pow(vector.x - last.x, 2) + Math.pow(vector.y - last.y, 2));
           if (dist < 0.001) return prev; // Filter out < 1mm (approx) movements
+
+          // V9.0 BIOMECHANICS: Click/Pop Detection
+          // Analyze velocity between last point and current point
+          const motionAnalysis = analyzeMotion(vector, last, 33); // 33ms = ~30fps
+
+          if (motionAnalysis.isClick) {
+            setClicksDetected(c => c + 1);
+            setShowClickWarning(true);
+
+            // Clear warning after 1s
+            if (clickWarningTimeout.current) clearTimeout(clickWarningTimeout.current);
+            clickWarningTimeout.current = window.setTimeout(() => setShowClickWarning(false), 1000);
+          }
         }
 
         return [...prev, vector];
@@ -387,31 +423,40 @@ function App() {
           {/* GUIDANCE & METRICS (Hidden during form/permission/countdown) */}
           {['CALIBRATION', 'EXERCISE'].includes(appState) && (
             <>
-              <GuidanceSystem message={getGuidance().m} subMessage={getGuidance().s} />
+              <GuidanceSystem
+                message={getGuidance().m}
+                subMessage={getGuidance().s}
+                progress={appState === 'EXERCISE' ? repsCount / REPS_REQUIRED : undefined}
+              />
               <MetricsPanel metrics={metrics} isRecording={appState === 'EXERCISE'} />
             </>
           )}
 
           {appState === 'EXERCISE' && (
             <>
-              {/* V9.7: Trajectory Graph Overlay (75px width, 1em/right-4 margin) */}
-              <div className="absolute top-1/2 -translate-y-1/2 right-4 z-40 w-[60px]">
-                <TrajectoryGraph path={trajectoryPath} width={48} height={180} />
+              {/* V10.0 Breathing Background Logo */}
+              <div className="absolute inset-0 flex items-center justify-center opacity-[0.02] pointer-events-none z-0">
+                <style>{`
+                    @keyframes relaxx-breath {
+                        0%, 100% { scale: 1; opacity: 0.02; }
+                        50% { scale: 1.1; opacity: 0.04; }
+                    }
+                    .animate-relaxx-breath { animation: relaxx-breath 8s ease-in-out infinite; }
+                  `}</style>
+                <img src="/logo_icon.png" className="w-[80%] h-[80%] object-contain animate-relaxx-breath" alt="" />
               </div>
 
-              {/* Progress Bar (Bottom) */}
-              <div className="fixed bottom-12 md:bottom-20 left-1/2 -translate-x-1/2 w-full max-w-[240px] z-50">
-                <div className="h-1 w-full bg-white/10 rounded-full overflow-hidden mb-3">
-                  <div
-                    className="h-full bg-gradient-to-r from-[#00FF66]/40 to-[#00FF66] transition-all duration-700"
-                    style={{ width: `${(repsCount / REPS_REQUIRED) * 100}%` }}
-                  />
-                </div>
-                <div className="flex justify-between items-center px-1">
-                  <span className="text-[8px] text-[#00FF66] font-black uppercase tracking-widest">Protocolo Relaxx</span>
-                  <span className="text-white font-mono text-xs">{repsCount}/{REPS_REQUIRED}</span>
-                </div>
+              {/* V9.7: Trajectory Graph Overlay */}
+              <div className="absolute top-1/2 -translate-y-1/2 right-8 z-40 w-auto animate-in fade-in slide-in-from-right duration-1000">
+                <TrajectoryGraph path={trajectoryPath} />
               </div>
+
+              {/* V9.0 BIOMECHANICS: Click Warning (New UI) */}
+              <Notification
+                isVisible={showClickWarning}
+                message="ESTALO DETECTADO"
+                type="error"
+              />
             </>
           )}
 
@@ -452,12 +497,19 @@ function App() {
             </FadeIn>
           )}
 
-          {appState === 'REPORTING' && report && (
-            <ReportView report={report} onReset={() => window.location.reload()} />
+          {appState === 'REPORTING' && reportData && (
+            <ReportView
+              report={reportData.text}
+              score={reportData.score}
+              clicks={clicksDetected}
+              history={telemetryHistory.current}
+              onReset={() => window.location.reload()}
+            />
           )}
         </>
-      )}
-    </div>
+      )
+      }
+    </div >
   );
 }
 

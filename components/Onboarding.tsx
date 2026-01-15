@@ -8,93 +8,95 @@ interface Props {
 
 const Onboarding: React.FC<Props> = ({ onStart }) => {
   return (
-    <div className="fixed inset-0 z-[100] overflow-y-auto bg-[#001A13]">
-      <div className="min-h-full w-full flex flex-col items-center justify-center p-6 md:p-12">
+    <div className="fixed inset-0 z-[100] overflow-y-auto bg-[#001A13] selection:bg-[#00FF66] selection:text-[#001A13]">
+      <style>{`
+        @keyframes rotate-slow {
+           from { transform: rotate(0deg); }
+           to { transform: rotate(360deg); }
+        }
+        .animate-rotate-slow { animation: rotate-slow 60s linear infinite; }
+      `}</style>
+
+      <div className="min-h-full w-full flex flex-col items-center justify-center p-6 md:p-12 relative">
         {/* Background Decor */}
         <div className="absolute inset-0 overflow-hidden pointer-events-none">
-          <div className="absolute top-[-20%] left-[-10%] w-[60%] h-[60%] bg-[#00FF66]/10 blur-[150px] rounded-full animate-pulse md:animate-none" />
-          <div className="absolute bottom-[-20%] right-[-10%] w-[60%] h-[60%] bg-[#00FF66]/5 blur-[150px] rounded-full" />
+          <div className="absolute top-[-10%] left-[-10%] w-[50%] h-[50%] bg-[#00FF66]/5 blur-[120px] rounded-full" />
+          <div className="absolute bottom-[-10%] right-[-10%] w-[50%] h-[50%] bg-[#00FF66]/5 blur-[120px] rounded-full" />
+
+          {/* Subtle Floating Logo */}
+          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 opacity-[0.02] animate-rotate-slow">
+            <img src="/logo_icon.png" className="w-[1000px] h-[1000px] object-contain" alt="" />
+          </div>
         </div>
 
-        <div className="max-w-4xl w-full text-center space-y-12 relative z-10">
-          <header className="space-y-8">
+        <div className="max-w-4xl w-full text-center space-y-16 relative z-10">
+          <header className="space-y-10">
             <FadeIn delay={0}>
               <div className="flex justify-center items-center">
-                <div className="bg-white/5 p-4 rounded-3xl backdrop-blur-md border border-white/10 shadow-2xl">
-                  <img src={logoImg}
-                    alt="Relaxx Clinic"
-                    className="h-12 md:h-16 object-contain"
-                    onError={(e) => {
-                      e.currentTarget.style.display = 'none';
-                      const parent = e.currentTarget.parentElement;
-                      if (parent) {
-                        parent.innerHTML = '<span class="text-white font-bold text-2xl tracking-tighter">RELAXX<span class="text-[#00FF66]">CLINIC</span></span>';
-                      }
-                    }} />
+                <div className="relative group">
+                  <div className="absolute inset-[-10px] bg-[#00FF66]/10 blur-xl rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-1000" />
+                  <img src="/logo_icon.png" alt="Relaxx" className="h-16 md:h-20 object-contain relative z-10 drop-shadow-[0_0_15px_rgba(0,255,102,0.2)]" />
                 </div>
               </div>
             </FadeIn>
 
             <FadeIn delay={200}>
-              <h1 className="text-5xl md:text-7xl font-extrabold tracking-tight text-white leading-[1.1]">
-                Inteligência <span className="text-[#00FF66]">Orofacial</span> <br />de Alta Precisão.
+              <h1 className="text-5xl md:text-8xl font-black tracking-tighter text-white leading-[0.95] uppercase italic">
+                Diagnóstico <br />
+                <span className="text-[#00FF66]">Biomecânico</span>
               </h1>
             </FadeIn>
 
             <FadeIn delay={300}>
-              <p className="text-gray-400 text-lg md:text-xl font-light max-w-2xl mx-auto leading-relaxed">
-                Realize seu diagnóstico funcional mandibular em tempo real com nossa tecnologia proprietária de visão computacional.
+              <p className="text-white/40 text-lg md:text-2xl font-light max-w-2xl mx-auto leading-tight tracking-tight">
+                Análise funcional mandibular em tempo real <br />
+                <span className="text-white/60">com tecnologia de visão computacional.</span>
               </p>
             </FadeIn>
           </header>
 
           <FadeIn delay={500}>
-            <div className="relaxx-glass p-8 md:p-12 rounded-[48px] text-left space-y-10 shadow-[0_32px_64px_rgba(0,0,0,0.4)] border border-white/5 bg-white/5 backdrop-blur-xl">
-              <div className="flex items-center justify-between border-b border-white/5 pb-6">
-                <h2 className="text-[#00FF66] font-bold uppercase tracking-[0.3em] text-[10px]">Parâmetros de Análise Clínica</h2>
-                <div className="flex gap-2">
-                  <div className="w-1 h-1 rounded-full bg-[#00FF66] animate-bounce"></div>
-                  <div className="w-1 h-1 rounded-full bg-[#00FF66]/40 animate-bounce delay-100"></div>
-                  <div className="w-1 h-1 rounded-full bg-[#00FF66]/20 animate-bounce delay-200"></div>
+            <div className="grid md:grid-cols-3 gap-6">
+              {[
+                { label: 'SIMETRIA', title: 'Bio-Eixo', desc: 'Centralidade neural.' },
+                { label: 'KINETIC', title: 'Fluidez', desc: 'Ritmo da ATM.' },
+                { label: 'REPORT', title: 'Clareza', desc: 'Dados clínicos.' }
+              ].map((item, i) => (
+                <div key={i} className="group p-8 rounded-[32px] bg-white/5 border border-white/5 hover:border-[#00FF66]/20 transition-all duration-500 hover:bg-white/[0.07] text-left">
+                  <div className="text-[#00FF66] font-black text-[10px] tracking-[0.3em] mb-4 opacity-40 group-hover:opacity-100 transition-opacity">0{i + 1} // {item.label}</div>
+                  <h3 className="text-white font-bold text-xl mb-1">{item.title}</h3>
+                  <p className="text-white/40 text-sm">{item.desc}</p>
                 </div>
-              </div>
-
-              <div className="grid md:grid-cols-3 gap-10">
-                <div className="space-y-4 group">
-                  <div className="text-[#00FF66] font-mono text-xs tracking-tighter group-hover:text-white transition-colors">01 // EIXO</div>
-                  <p className="text-white font-bold text-lg">Centralização</p>
-                  <p className="text-gray-500 text-sm leading-relaxed group-hover:text-gray-300 transition-colors">Alinhamento instantâneo do eixo vertical para detectar assimetrias esqueléticas.</p>
-                </div>
-                <div className="space-y-4 group">
-                  <div className="text-[#00FF66] font-mono text-xs tracking-tighter group-hover:text-white transition-colors">02 // KINETIC</div>
-                  <p className="text-white font-bold text-lg">Mobilidade</p>
-                  <p className="text-gray-500 text-sm leading-relaxed group-hover:text-gray-300 transition-colors">Mapeamento dinâmico da abertura bucal para identificar desvios e "shifts" musculares.</p>
-                </div>
-                <div className="space-y-4 group">
-                  <div className="text-[#00FF66] font-mono text-xs tracking-tighter group-hover:text-white transition-colors">03 // REPORT</div>
-                  <p className="text-white font-bold text-lg">Bio-Laudo</p>
-                  <p className="text-gray-500 text-sm leading-relaxed group-hover:text-gray-300 transition-colors">Processamento via rede neural Gemini para síntese diagnóstica profissional.</p>
-                </div>
-              </div>
+              ))}
             </div>
           </FadeIn>
 
           <FadeIn delay={700}>
-            <div className="pt-6">
+            <div className="pt-8">
               <button
                 onClick={onStart}
-                className="btn-relaxx px-20 py-6 rounded-full font-black uppercase tracking-[0.3em] text-xs transition-all duration-500 hover:scale-105 active:scale-95 shadow-[0_20px_60px_rgba(0,255,102,0.25)] relative overflow-hidden group"
+                className="group relative px-20 py-8 rounded-full overflow-hidden transition-all duration-500 hover:scale-105 active:scale-95"
               >
-                <div className="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform duration-500 ease-out" />
-                <span className="relative z-10">Iniciar Protocolo Digital</span>
+                <div className="absolute inset-0 bg-[#00FF66] transition-transform duration-500 group-hover:scale-110" />
+                <div className="absolute inset-0 bg-gradient-to-tr from-white/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+                <span className="relative z-10 text-[#001A13] font-black uppercase tracking-[0.4em] text-xs">Iniciar Protocolo</span>
               </button>
             </div>
           </FadeIn>
 
-          <footer className="pt-16 flex items-center justify-center gap-12 opacity-20 grayscale brightness-200 contrast-125">
-            <span className="text-[10px] font-black tracking-[0.2em]">HOSPITAL DAS CLÍNICAS</span>
-            <span className="text-[10px] font-black tracking-[0.2em]">INOVA HC</span>
-            <span className="text-[10px] font-black tracking-[0.2em]">USP MEDICAL</span>
+          <footer className="pt-20 flex flex-wrap items-center justify-center gap-x-12 gap-y-6 opacity-[0.15] grayscale contrast-125">
+            <div className="flex items-center gap-3">
+              <div className="w-1.5 h-1.5 rounded-full bg-white" />
+              <span className="text-[10px] font-black tracking-[0.3em] uppercase">Inova HC</span>
+            </div>
+            <div className="flex items-center gap-3">
+              <div className="w-1.5 h-1.5 rounded-full bg-white" />
+              <span className="text-[10px] font-black tracking-[0.3em] uppercase">USP Medical</span>
+            </div>
+            <div className="flex items-center gap-3">
+              <div className="w-1.5 h-1.5 rounded-full bg-white" />
+              <span className="text-[10px] font-black tracking-[0.3em] uppercase">Clinic Lab</span>
+            </div>
           </footer>
         </div>
       </div>
