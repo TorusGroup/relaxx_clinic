@@ -32,7 +32,9 @@ export const calculateMetrics = (landmarks: Landmark[]): DiagnosticMetrics => {
     Math.pow(lowerLip.x - upperLip.x, 2) + Math.pow(lowerLip.y - upperLip.y, 2)
   );
   // Escala empírica ajustada para Outer Lips (0/17)
-  const normalizedOpening = (rawOpening / ipd) * 100;
+  // MULTIPLIER 65: Approximates Millimeters (Avg IPD = 63-65mm)
+  // This converts "Ratio of IPD" to "Estimated Millimeters"
+  const normalizedOpening = (rawOpening / ipd) * 65;
 
   // 3. Desvio Lateral com CORREÇÃO DE ROTAÇÃO (Head Roll Correction)
   // Em vez de comparar X absoluto, projetamos o vetor Queixo->MeioOlhos no vetor OlhoDir->OlhoEsq.
@@ -67,7 +69,8 @@ export const calculateMetrics = (landmarks: Landmark[]): DiagnosticMetrics => {
 
   // Normalização Percentual (Relativa ao IPD)
   // Multiplicamos por variávies de calibração se necessário.
-  const lateralDev = (rawDeviation / ipd) * 100;
+  // MULTIPLIER 65: Approximates Millimeters (Avg IPD 63-65mm)
+  const lateralDev = (rawDeviation / ipd) * 65;
 
   // 4. Ângulo Vertical (Corrigido)
   // Calculamos o ângulo entre o vetor Queixo-Testa e a vertical "real" do rosto

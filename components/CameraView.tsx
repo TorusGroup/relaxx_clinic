@@ -3,13 +3,14 @@ import { LANDMARK_INDICES, COLORS } from '../constants';
 import { calculateMetrics } from '../services/analysisEngine';
 import { DiagnosticMetrics, Landmark } from '../types';
 import { OneEuroFilter } from '../utils/oneEuroFilter';
+import { chaikinSmooth } from '../utils/geometry';
 
 interface Props {
   onMetricsUpdate: (metrics: DiagnosticMetrics, landmarks: Landmark[]) => void;
   stream: MediaStream | null;
-  tare?: { lateral: number; opening: number }; // Made optional to prevent strict errors if missing
+  tare?: { lateral: number; opening: number };
   onCameraReady: () => void;
-  onTrajectoryUpdate?: (path: { x: number, y: number }[]) => void; // V9.0
+  onTrajectoryUpdate?: (vector: { x: number, y: number }) => void; // V9.9 Single Vector
 }
 
 const CameraView: React.FC<Props> = ({ onCameraReady, onMetricsUpdate, onTrajectoryUpdate, stream, tare }) => {
@@ -27,7 +28,7 @@ const CameraView: React.FC<Props> = ({ onCameraReady, onMetricsUpdate, onTraject
 
   // V8.0 PHYSICS: Mandible Lock & Trajectory
   const chinOffsetRef = useRef<{ x: number, y: number } | null>(null);
-  const trajectoryRef = useRef<{ x: number, y: number }[]>([]);
+  // trajectoryRef REMOVED (V9.9) - State in App.tsx
 
   // Initialize filters for key landmarks (Face Oval, Lips, Chin)
   // V6.0 FIX: Initialize with CURRENT value to prevent "flying" glitch from (0,0)
@@ -58,200 +59,215 @@ const CameraView: React.FC<Props> = ({ onCameraReady, onMetricsUpdate, onTraject
     canvasCtx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
 
     if (results.multiFaceLandmarks && results.multiFaceLandmarks.length > 0) {
-      // Cinematically Reveal UI on first detection
-      if (!hasDetectedFace) setHasDetectedFace(true);
+      try {
+        // Cinematically Reveal UI on first detection
+        if (!hasDetectedFace) setHasDetectedFace(true);
 
-      const rawLandmarks = results.multiFaceLandmarks[0];
-      const timestamp = Date.now() / 1000;
+        const rawLandmarks = results.multiFaceLandmarks[0];
+        const timestamp = Date.now() / 1000;
 
-      // 1. ADVANCED SMOOTHING (One Euro Filter)
-      // DEDUPLICATE INDICES to prevent multiple filter steps per frame (Causes NaN)
-      const indicesToSmooth = Array.from(new Set([
-        ...Object.values(LANDMARK_INDICES).filter(v => typeof v === 'number') as number[],
-        ...LANDMARK_INDICES.MANDIBLE_PATH,
-        ...[377, 400, 378, 148, 175, 150]
-      ]));
+        // 1. ADVANCED SMOOTHING (One Euro Filter)
+        // DEDUPLICATE INDICES to prevent multiple filter steps per frame (Causes NaN)
+        const indicesToSmooth = Array.from(new Set([
+          ...Object.values(LANDMARK_INDICES).filter(v => typeof v === 'number') as number[],
+          ...LANDMARK_INDICES.MANDIBLE_PATH,
+          ...[377, 400, 378, 148, 175, 150]
+        ]));
 
-      const smoothedLandmarks = [...rawLandmarks];
+        const smoothedLandmarks = [...rawLandmarks];
 
-      indicesToSmooth.forEach((idx) => {
-        // V6.0: Pass raw value for initialization
-        const f = getFilters(idx, rawLandmarks[idx]);
-        smoothedLandmarks[idx] = {
-          x: f.x.filter(rawLandmarks[idx].x, timestamp),
-          y: f.y.filter(rawLandmarks[idx].y, timestamp),
-          z: f.z.filter(rawLandmarks[idx].z, timestamp)
-        };
-      });
+        indicesToSmooth.forEach((idx) => {
+          // V6.0: Pass raw value for initialization
+          const f = getFilters(idx, rawLandmarks[idx]);
+          smoothedLandmarks[idx] = {
+            x: f.x.filter(rawLandmarks[idx].x, timestamp),
+            y: f.y.filter(rawLandmarks[idx].y, timestamp),
+            z: f.z.filter(rawLandmarks[idx].z, timestamp)
+          };
+        });
 
-      // --- V8.0 MANDIBLE PHYSICS LOCK ---
-      // Concept: The chin bone (152) is rigidly connected to the lower lip bone insertion.
-      // We assume the distance LowerLipBottom (17) -> Chin (152) is CONSTANT.
-      // This eliminates "floating chin" caused by shadow/skin artifacts.
+        // --- V9.1 MANDIBLE PHYSICS LOCK (Scale Invariant) ---
+        // Concept: The chin bone (152) is rigidly connected to the lower lip bone insertion.
+        // We assume the distance LowerLipBottom (17) -> Chin (152) is proportionally CONSTANT to Face Size (IPD).
 
-      const lowerLipBottom = smoothedLandmarks[17];
-      const rawChin = smoothedLandmarks[152]; // We use 152 (Menton) as anchor
+        const lowerLipBottom = smoothedLandmarks[17];
+        const rawChin = smoothedLandmarks[152]; // We use 152 (Menton) as anchor
 
-      if (!chinOffsetRef.current) {
-        // CAPTURE BONE GEOMETRY (First Frame)
-        chinOffsetRef.current = {
-          x: rawChin.x - lowerLipBottom.x,
-          y: rawChin.y - lowerLipBottom.y
-        };
-      }
+        const nose = smoothedLandmarks[LANDMARK_INDICES.NOSE];
+        const lEye = smoothedLandmarks[LANDMARK_INDICES.LEFT_EYE];
+        const rEye = smoothedLandmarks[LANDMARK_INDICES.RIGHT_EYE];
 
-      // APPLY PHYSICS LOCK
-      // VirtualChin = LowerLip + FixedOffset
-      // We calculate where the chin SHOULD be based on the lip
-      const lockedChin = {
-        x: lowerLipBottom.x + chinOffsetRef.current.x,
-        y: lowerLipBottom.y + chinOffsetRef.current.y,
-        z: rawChin.z // Z depth is less critical for 2D drawing, keep original
-      };
+        // V9.9 FAILSAFE: Ensure valid IPD to prevent Division-by-Zero
+        let currentIPD = Math.sqrt(Math.pow(rEye.x - lEye.x, 2) + Math.pow(rEye.y - lEye.y, 2));
+        if (!currentIPD || currentIPD < 0.01) currentIPD = 0.06;
 
-      // OVERRIDE the smoothed landmark 152 with our Locked Physics version
-      // This forces the "Comet Trail" and "Visual Curve" to follow the Physics Lock
-      smoothedLandmarks[152] = lockedChin;
-
-
-      // --- V9.0 EXTRACT TRAJECTORY (No Canvas Drawing Here) ---
-      // Capture Normalized Points for the Side Graph
-      trajectoryRef.current.push(lockedChin); // Store normalized 0..1
-      if (trajectoryRef.current.length > 50) trajectoryRef.current.shift();
-
-      // Export to Parent
-      if (onTrajectoryUpdate) {
-        onTrajectoryUpdate([...trajectoryRef.current]); // Fix: Send copy to trigger React re-render
-      }
-
-
-      // --- V9.0 CLEAN CHIN RENDER (Smooth Curve, No Dots) ---
-      const { width, height } = canvasRef.current;
-
-      // Draw Face Oval (Partial) or just Chin?
-      // Let's only draw the Mandible Path cleanly.
-      const mandibleIndices = LANDMARK_INDICES.MANDIBLE_PATH; // e.g., 365..152..136
-
-      // Collect points relative to canvas
-      const jawPoints = mandibleIndices.map(idx => {
-        const p = smoothedLandmarks[idx];
-        return { x: (1 - p.x) * width, y: p.y * height }; // Mirror X applied here
-      });
-
-      if (jawPoints.length > 2) {
-        canvasCtx.beginPath();
-        canvasCtx.moveTo(jawPoints[0].x, jawPoints[0].y);
-
-        // Smooth Curve Strategy: Quadratic Bezier to Midpoints
-        for (let i = 1; i < jawPoints.length - 2; i++) {
-          const xc = (jawPoints[i].x + jawPoints[i + 1].x) / 2;
-          const yc = (jawPoints[i].y + jawPoints[i + 1].y) / 2;
-          canvasCtx.quadraticCurveTo(jawPoints[i].x, jawPoints[i].y, xc, yc);
+        if (!chinOffsetRef.current) {
+          // CAPTURE BONE GEOMETRY (First Frame) - RELATIVE TO IPD
+          // This makes the offset "Zoom-Proof"
+          chinOffsetRef.current = {
+            x: (rawChin.x - lowerLipBottom.x) / currentIPD,
+            y: (rawChin.y - lowerLipBottom.y) / currentIPD
+          };
         }
-        // Final segments
-        canvasCtx.quadraticCurveTo(
-          jawPoints[jawPoints.length - 2].x,
-          jawPoints[jawPoints.length - 2].y,
-          jawPoints[jawPoints.length - 1].x,
-          jawPoints[jawPoints.length - 1].y
-        );
-      }
 
-      canvasCtx.lineWidth = 2; // Thinner, more elegant
-      canvasCtx.strokeStyle = '#00FF66';
-      canvasCtx.shadowBlur = 15;
-      canvasCtx.shadowColor = '#00FF66';
-      canvasCtx.lineCap = 'round';
-      canvasCtx.lineJoin = 'round';
-      canvasCtx.stroke();
+        // APPLY PHYSICS LOCK
+        // VirtualChin = LowerLip + (FixedRatio * CurrentIPD)
+        const lockedChin = {
+          x: lowerLipBottom.x + (chinOffsetRef.current.x * currentIPD),
+          y: lowerLipBottom.y + (chinOffsetRef.current.y * currentIPD),
+          z: rawChin.z
+        };
 
-      // DO NOT draw individual dots anymore (Removed the 'arc' loop)
+        // OVERRIDE the smoothed landmark 152 with our Locked Physics version
+        smoothedLandmarks[152] = lockedChin;
+        // --- V9.7 TRAJECTORY ENGINE (Z-Axis Invariant) ---
+        // Use Relative Motion (Chin - Nose) NORMALIZED by Face Scale (IPD)
+        const REFERENCE_IPD = 0.06; // Normalized reference size (approx)
+        const zCorrection = REFERENCE_IPD / currentIPD;
 
+        // Gate: Only record if mouth is actually open > 2.0u (Avoid Static Noise)
+        // Note: displayMetrics calculated later, but we need raw check
+        const rawOp = Math.sqrt(Math.pow(smoothedLandmarks[LANDMARK_INDICES.LOWER_LIP].y - smoothedLandmarks[LANDMARK_INDICES.UPPER_LIP].y, 2));
+        const isOpen = rawOp > 0.015;
 
-      // 2. VIRTUAL CHIN (Metric Stability ONLY)
-      // We use a clone for metrics to not affect the visual drawing (which needs natural shape)
-      const metricLandmarks = [...smoothedLandmarks];
+        if (isOpen && onTrajectoryUpdate) {
+          // Calculate Relative Motion corrected for Z-Depth
+          const relX = (nose.x - lockedChin.x) * zCorrection;
+          const relY = (lockedChin.y - nose.y) * zCorrection; // Positive = Down
 
-      const chinIndices = [152, 377, 400, 378, 148, 175, 150];
-      const virtualChin = { x: 0, y: 0, z: 0 };
-      chinIndices.forEach(idx => {
-        virtualChin.x += smoothedLandmarks[idx].x;
-        virtualChin.y += smoothedLandmarks[idx].y;
-        virtualChin.z += smoothedLandmarks[idx].z;
-      });
-      virtualChin.x /= chinIndices.length;
-      virtualChin.y /= chinIndices.length;
-      virtualChin.z /= chinIndices.length;
+          // V9.9 SANITIZATION: Protect against NaN/Inf explosions
+          if (Number.isFinite(relX) && Number.isFinite(relY)) {
+            onTrajectoryUpdate({ x: relX, y: relY });
+          }
+        }
 
-      // Inject Virtual Chin into METRIC array only
-      metricLandmarks[152] = virtualChin;
+        // --- V9.4 VISUALIZATION: ELLIPTICAL CHIN ---
+        const { width, height } = canvasRef.current;
 
-      // 3. CALCULATE METRICS (Using Robust Virtual Chin)
-      const metrics = calculateMetrics(metricLandmarks);
+        // "Reduced Set" of Key Anchors for U-Shape (stripping out bumpy intermediate points)
+        // Left Jaw -> Mid Left -> Chin -> Mid Right -> Right Jaw
+        const U_SHAPE_INDICES = [172, 136, 150, 152, 379, 365, 397];
 
-      // APPLY TARE VISUALLY (So canvas matches HUD)
-      const displayMetrics = { ...metrics };
-      if (tare) {
-        displayMetrics.lateralDeviation -= tare.lateral;
-        displayMetrics.openingAmplitude = Math.max(0, displayMetrics.openingAmplitude - tare.opening);
-      }
+        const jawPoints = U_SHAPE_INDICES.map(idx => {
+          const p = smoothedLandmarks[idx];
+          return { x: (1 - p.x) * width, y: p.y * height };
+        });
 
-      // ZERO-START MASK (Match App.tsx)
-      if (displayMetrics.openingAmplitude < 2.5) {
-        displayMetrics.openingAmplitude = 0;
-        displayMetrics.lateralDeviation = 0;
-      }
+        // Hyper-Smooth the Reduced Set (4 iterations = Liquid)
+        const smoothJaw = chaikinSmooth(jawPoints, 4, false);
 
-      onMetricsUpdate(metrics, metricLandmarks);
+        if (smoothJaw.length > 2) {
+          canvasCtx.beginPath();
+          canvasCtx.moveTo(smoothJaw[0].x, smoothJaw[0].y);
+          for (let i = 1; i < smoothJaw.length; i++) {
+            canvasCtx.lineTo(smoothJaw[i].x, smoothJaw[i].y);
+          }
+        }
 
-      // 4. DRAWING (Using Natural Smoothed Landmarks)
-      canvasCtx.lineWidth = 2;
-      canvasCtx.strokeStyle = COLORS.RELAXX_GREEN;
-
-      const drawPoint = (p: Landmark, size = 1.5, color = COLORS.RELAXX_GREEN) => {
-        canvasCtx.fillStyle = color;
-        canvasCtx.beginPath();
-        // Mirror X
-        canvasCtx.arc((1 - p.x) * canvasRef.current!.width, p.y * canvasRef.current!.height, size, 0, 2 * Math.PI);
-        canvasCtx.fill();
-      };
-
-      const drawLine = (p1: Landmark, p2: Landmark, color = COLORS.RELAXX_GREEN, alpha = 0.4) => {
-        canvasCtx.globalAlpha = alpha;
-        canvasCtx.strokeStyle = color;
-        canvasCtx.beginPath();
-        canvasCtx.moveTo((1 - p1.x) * canvasRef.current!.width, p1.y * canvasRef.current!.height);
-        canvasCtx.lineTo((1 - p2.x) * canvasRef.current!.width, p2.y * canvasRef.current!.height);
+        canvasCtx.lineWidth = 3;
+        canvasCtx.strokeStyle = '#00FF66';
+        canvasCtx.shadowBlur = 20; // Neon Glow
+        canvasCtx.shadowColor = 'rgba(0, 255, 102, 0.6)';
+        canvasCtx.lineCap = 'round';
+        canvasCtx.lineJoin = 'round';
         canvasCtx.stroke();
-      };
 
-      const forehead = smoothedLandmarks[LANDMARK_INDICES.FOREHEAD];
-      const chin = smoothedLandmarks[LANDMARK_INDICES.CHIN]; // Now Virtual Chin
-      drawLine(forehead, chin, COLORS.RELAXX_GREEN, 0.2);
+        // DO NOT draw individual dots anymore (Removed the 'arc' loop)
 
 
+        // 2. VIRTUAL CHIN (Metric Stability ONLY)
+        // We use a clone for metrics to not affect the visual drawing (which needs natural shape)
+        const metricLandmarks = [...smoothedLandmarks];
 
-      const upper = smoothedLandmarks[LANDMARK_INDICES.UPPER_LIP];
-      const lower = smoothedLandmarks[LANDMARK_INDICES.LOWER_LIP];
-      drawLine(upper, lower, '#FFFFFF', 0.8);
-      drawPoint(upper, 2, '#FFFFFF');
-      drawPoint(lower, 2, '#FFFFFF');
+        const chinIndices = [152, 377, 400, 378, 148, 175, 150];
+        const virtualChin = { x: 0, y: 0, z: 0 };
+        chinIndices.forEach(idx => {
+          virtualChin.x += smoothedLandmarks[idx].x;
+          virtualChin.y += smoothedLandmarks[idx].y;
+          virtualChin.z += smoothedLandmarks[idx].z;
+        });
+        virtualChin.x /= chinIndices.length;
+        virtualChin.y /= chinIndices.length;
+        virtualChin.z /= chinIndices.length;
 
-      // VISUAL MATH
-      const textX = ((1 - upper.x) * canvasRef.current!.width) + 20;
-      const textY = (upper.y * canvasRef.current!.height);
+        // Inject Virtual Chin into METRIC array only
+        metricLandmarks[152] = virtualChin;
 
-      canvasCtx.font = "600 12px 'JetBrains Mono'";
-      canvasCtx.fillStyle = "rgba(0, 255, 102, 0.9)";
-      canvasCtx.shadowColor = "rgba(0, 0, 0, 0.8)";
-      canvasCtx.shadowBlur = 4;
+        // 3. CALCULATE METRICS (Using Robust Virtual Chin)
+        const metrics = calculateMetrics(metricLandmarks);
 
-      // Updated Unit: 'u' to match HUD
-      canvasCtx.fillText(`AMP: ${displayMetrics.openingAmplitude.toFixed(1)}u`, textX, textY);
+        // APPLY TARE VISUALLY (So canvas matches HUD)
+        const displayMetrics = { ...metrics };
+        if (tare) {
+          displayMetrics.lateralDeviation -= tare.lateral;
+          displayMetrics.openingAmplitude = Math.max(0, displayMetrics.openingAmplitude - tare.opening);
+        }
 
-      if (Math.abs(displayMetrics.lateralDeviation) > 1) {
-        canvasCtx.fillStyle = Math.abs(displayMetrics.lateralDeviation) > 5 ? "#FF3333" : "rgba(255, 255, 255, 0.8)";
-        canvasCtx.fillText(`DEV: ${displayMetrics.lateralDeviation.toFixed(1)}u`, textX, textY + 16);
+        // ZERO-START MASK (Match App.tsx) - Increased to 5.0u for solid zero
+        if (displayMetrics.openingAmplitude < 5.0) {
+          displayMetrics.openingAmplitude = 0;
+          displayMetrics.lateralDeviation = 0;
+        }
+
+        onMetricsUpdate(metrics, metricLandmarks);
+
+        // 4. DRAWING (Using Natural Smoothed Landmarks)
+        canvasCtx.lineWidth = 2;
+        canvasCtx.strokeStyle = COLORS.RELAXX_GREEN;
+
+        const drawPoint = (p: Landmark, size = 1.5, color = COLORS.RELAXX_GREEN) => {
+          canvasCtx.fillStyle = color;
+          canvasCtx.beginPath();
+          // Mirror X
+          canvasCtx.arc((1 - p.x) * canvasRef.current!.width, p.y * canvasRef.current!.height, size, 0, 2 * Math.PI);
+          canvasCtx.fill();
+        };
+
+        const drawLine = (p1: Landmark, p2: Landmark, color = COLORS.RELAXX_GREEN, alpha = 0.4) => {
+          canvasCtx.globalAlpha = alpha;
+          canvasCtx.strokeStyle = color;
+          canvasCtx.beginPath();
+          canvasCtx.moveTo((1 - p1.x) * canvasRef.current!.width, p1.y * canvasRef.current!.height);
+          canvasCtx.lineTo((1 - p2.x) * canvasRef.current!.width, p2.y * canvasRef.current!.height);
+          canvasCtx.stroke();
+        };
+
+        const midEyeLandmark = {
+          x: (smoothedLandmarks[33].x + smoothedLandmarks[263].x) / 2,
+          y: (smoothedLandmarks[33].y + smoothedLandmarks[263].y) / 2,
+          z: (smoothedLandmarks[33].z + smoothedLandmarks[263].z) / 2
+        };
+
+        const chin = smoothedLandmarks[LANDMARK_INDICES.CHIN]; // Now Virtual Chin
+
+        // ALIGN VISUALS WITH MATH: Draw line from Eye Midpoint (Math Anchor) to Chin
+        drawLine(midEyeLandmark, chin, COLORS.RELAXX_GREEN, 0.4);
+
+        const upper = smoothedLandmarks[LANDMARK_INDICES.UPPER_LIP];
+        const lower = smoothedLandmarks[LANDMARK_INDICES.LOWER_LIP];
+        drawLine(upper, lower, '#FFFFFF', 0.8);
+        drawPoint(upper, 2, '#FFFFFF');
+        drawPoint(lower, 2, '#FFFFFF');
+
+        // VISUAL MATH
+        const textX = ((1 - upper.x) * canvasRef.current!.width) + 20;
+        const textY = (upper.y * canvasRef.current!.height);
+
+        canvasCtx.font = "600 12px 'JetBrains Mono'";
+        canvasCtx.fillStyle = "rgba(0, 255, 102, 0.9)";
+        canvasCtx.shadowColor = "rgba(0, 0, 0, 0.8)";
+        canvasCtx.shadowBlur = 4;
+
+        // Updated Unit: 'u' to match HUD
+        canvasCtx.fillText(`AMP: ${displayMetrics.openingAmplitude.toFixed(1)}u`, textX, textY);
+
+        if (Math.abs(displayMetrics.lateralDeviation) > 1) {
+          canvasCtx.fillStyle = Math.abs(displayMetrics.lateralDeviation) > 5 ? "#FF3333" : "rgba(255, 255, 255, 0.8)";
+          canvasCtx.fillText(`DEV: ${displayMetrics.lateralDeviation.toFixed(1)}u`, textX, textY + 16);
+        }
+
+      } catch (loopError) {
+        console.error("FATAL: CameraView Loop Crashed", loopError);
       }
     }
     canvasCtx.restore();

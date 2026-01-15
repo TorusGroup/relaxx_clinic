@@ -42,6 +42,8 @@ function App() {
   // History Refs
   const telemetryHistory = useRef<TelemetryData[]>([]);
   const metricsBuffer = useRef<DiagnosticMetrics[]>([]);
+  // V9.8 FIX: Double Counting Debouncer
+  const lastRepTime = useRef<number>(0);
 
   const getGuidance = () => {
     switch (appState) {
@@ -67,6 +69,15 @@ function App() {
     // V6.1 RESILIENCE: Sanitize Input
     if (isNaN(newMetrics.openingAmplitude) || isNaN(newMetrics.lateralDeviation)) {
       return { ...newMetrics, openingAmplitude: 0, lateralDeviation: 0 };
+    }
+
+    // INSTANT ZEROING (Fix Lag)
+    // If input is clearly closed, FORCE Buffer to Zero immediately.
+    // This kills the EMA "Momentum" and prevents the numbers from "floating down" slowly.
+    if (newMetrics.openingAmplitude < 5.0) {
+      const zeroed = { ...newMetrics, openingAmplitude: 0, lateralDeviation: 0 };
+      prevSmoothedRef.current = zeroed;
+      return zeroed;
     }
 
     if (ENABLE_SMART_LOCK) {
@@ -132,12 +143,18 @@ function App() {
     stateRef.current = { appState, isMouthOpen, repsCount };
   }, [appState, isMouthOpen, repsCount]);
 
+  // V9.5 Fix: Store latest metrics in ref to avoid re-creating callbacks
+  const latestMetricsRef = useRef<DiagnosticMetrics>(metrics);
+
   const handleMetricsUpdate = useCallback((rawMetrics: DiagnosticMetrics, landmarks: Landmark[]) => {
     // Access latest state via ref to avoid breaking callback stability
     const { appState: currentAppState, isMouthOpen: currentIsMouthOpen, repsCount: currentRepsCount } = stateRef.current;
 
     // Always smooth metrics first
     const smoothed = smoothMetrics(rawMetrics);
+
+    // Update stable ref
+    latestMetricsRef.current = smoothed;
 
     // LOGGING FOR DIAGNOSIS (V6.2)
     if (Math.random() < 0.05) { // Sample 5% of frames to avoid spam
@@ -155,12 +172,17 @@ function App() {
       smoothed.openingAmplitude = Math.max(0, smoothed.openingAmplitude - tareRef.current.opening);
 
       // ZERO-START DEADBAND (Suggestion Logic)
-      // Logic: If mouth is effectively closed (< 2.5u), assume NO deviation.
+      // Logic: If mouth is effectively closed (< 5.0u), assume NO deviation.
       // This creates a clean "0.0 / 0.0" start and prevents static head-roll noise.
-      if (smoothed.openingAmplitude < 2.5) {
+      if (smoothed.openingAmplitude < 5.0) {
         smoothed.openingAmplitude = 0;
         smoothed.lateralDeviation = 0;
       }
+    }
+
+    // Logging for diagnosis of "Zero Stick"
+    if (currentIsMouthOpen && smoothed.openingAmplitude === 0) {
+      console.warn("Metrics Zeroed while Open! Raw:", rawMetrics.openingAmplitude);
     }
 
     setMetrics(smoothed);
@@ -205,11 +227,29 @@ function App() {
 
       const adjustedThreshold = 18; // Sensitivity
 
+      // V9.8 FIX: Double Counting & Graph Reset
+      const now = Date.now();
+      // Ref is now top-level
+
+
       if (smoothed.openingAmplitude > adjustedThreshold && !currentIsMouthOpen) {
         setIsMouthOpen(true);
+        // V9.9 FIX: Clear Trajectory IMMEDIATELY on Rep Start
+        // This ensures the Anchor (path[0]) is the "Closed" position of the NEW rep.
+        setTrajectoryPath([]);
       } else if (smoothed.openingAmplitude < (adjustedThreshold * 0.6) && currentIsMouthOpen) {
-        setIsMouthOpen(false);
-        setRepsCount(c => c + 1);
+        // DEBOUNCE: Only count if > 1.0s since last rep to prevent jitter/double-clutch
+        if (now - lastRepTime.current > 1000) {
+          setIsMouthOpen(false);
+          setRepsCount(c => c + 1);
+          lastRepTime.current = now;
+
+          // AUTO-RESET GRAPH: Clear trajectory on every closed mouth (Cleaner Visuals)
+          setResetTrigger(t => t + 1);
+        } else {
+          // Just close state, don't count if too fast
+          setIsMouthOpen(false);
+        }
       }
     }
   }, []); // Empty dependency array = Stable Reference = No Camera Restart!
@@ -228,6 +268,42 @@ function App() {
     setIsLoadingReport(false);
     setAppState('REPORTING');
   };
+
+  // V9.9: Accumulate Trajectory Points (App Centralized State)
+  const handleTrajectoryVector = useCallback((vector: { x: number, y: number }) => {
+    // Only record if we are "In Rep" (Mouth Open)
+    if (stateRef.current.isMouthOpen && stateRef.current.appState === 'EXERCISE') {
+      setTrajectoryPath(prev => {
+        // Limit history to ~2s (60 frames)
+        if (prev.length > 60) {
+          return [...prev.slice(1), vector];
+        }
+
+        // V9.9 POLLUTION FILTER: Ignore micro-movements (Static Jitter)
+        // This prevents "blobbing" when user holds the mouth open.
+        if (prev.length > 0) {
+          const last = prev[prev.length - 1];
+          const dist = Math.sqrt(Math.pow(vector.x - last.x, 2) + Math.pow(vector.y - last.y, 2));
+          if (dist < 0.001) return prev; // Filter out < 1mm (approx) movements
+        }
+
+        return [...prev, vector];
+      });
+    }
+  }, []);
+
+  const handleCountdownComplete = useCallback(() => {
+    // V9.4 AUTO-TARE - DISABLED (V9.8 FIX)
+    tareRef.current = { lateral: 0, opening: 0 };
+    console.log("Protocol Started. Auto-Tare DISABLED.");
+
+    // V9.9: Clear path explicitly
+    setTrajectoryPath([]);
+
+    // Reset buffer to ensure clean start
+    metricsBuffer.current = [];
+    setAppState('EXERCISE');
+  }, []);
 
   const handleCameraPermission = async () => {
     try {
@@ -290,7 +366,9 @@ function App() {
 
       {/* CAMERA ALWAYS ACTIVE in these states to prevent black screen */}
       {/* Added COUNTDOWN to this list so camera stays on behind the overlay */}
-      {['PERMISSION_REQUEST', 'COUNTDOWN', 'CALIBRATION', 'EXERCISE', 'LEAD_FORM'].includes(appState) && (
+      {/* CAMERA ALWAYS ACTIVE in these states to prevent black screen */}
+      {/* Added ALL states to ensure UI renders (PERMISSION, LEAD, REPORTING) */}
+      {['COUNTDOWN', 'CALIBRATION', 'EXERCISE', 'INSTRUCTION', 'PERMISSION_REQUEST', 'LEAD_FORM', 'REPORTING'].includes(appState) && (
         <>
           {stream && (
             <CameraView
@@ -298,16 +376,12 @@ function App() {
               onMetricsUpdate={handleMetricsUpdate}
               stream={stream}
               tare={tareRef.current}
-              onTrajectoryUpdate={setTrajectoryPath}
+              onTrajectoryUpdate={handleTrajectoryVector} // V9.9
             />
           )}
 
           {appState === 'COUNTDOWN' && (
-            <CountdownOverlay onComplete={() => {
-              // Reset buffer to ensure clean start
-              metricsBuffer.current = [];
-              setAppState('EXERCISE');
-            }} />
+            <CountdownOverlay onComplete={handleCountdownComplete} />
           )}
 
           {/* GUIDANCE & METRICS (Hidden during form/permission/countdown) */}
@@ -320,9 +394,9 @@ function App() {
 
           {appState === 'EXERCISE' && (
             <>
-              {/* V9.2: Trajectory Graph Overlay (Centered Right, Glass) */}
-              <div className="absolute top-1/2 -translate-y-1/2 right-2 z-40 w-[120px]">
-                <TrajectoryGraph path={trajectoryPath} width={120} height={180} />
+              {/* V9.7: Trajectory Graph Overlay (75px width, 1em/right-4 margin) */}
+              <div className="absolute top-1/2 -translate-y-1/2 right-4 z-40 w-[60px]">
+                <TrajectoryGraph path={trajectoryPath} width={48} height={180} />
               </div>
 
               {/* Progress Bar (Bottom) */}
