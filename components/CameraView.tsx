@@ -43,9 +43,9 @@ const CameraView: React.FC<Props> = ({ onCameraReady, onMetricsUpdate, onTraject
       // Config: Freq 30Hz, MinCutoff 1.0 (slow), Beta 0.0 (latency), DCutoff 1.0
       // For Chin, we want HIGH stability.
       filtersRef.current.set(idx, {
-        x: new OneEuroFilter(30, 0.5, 0.001, 1),
-        y: new OneEuroFilter(30, 0.5, 0.001, 1),
-        z: new OneEuroFilter(30, 0.5, 0.001, 1)
+        x: new OneEuroFilter(30, 0.05, 0.001, 1),
+        y: new OneEuroFilter(30, 0.05, 0.001, 1),
+        z: new OneEuroFilter(30, 0.05, 0.001, 1)
       });
       // Force internal state to current value immediately
       filtersRef.current.get(idx)!.x.filter(initValue.x, -1); // prime the filter
@@ -289,8 +289,8 @@ const CameraView: React.FC<Props> = ({ onCameraReady, onMetricsUpdate, onTraject
         // Inject Virtual Chin into METRIC array only
         metricLandmarks[152] = virtualChin;
 
-        // 3. CALCULATE METRICS (Using Robust Virtual Chin)
-        const metrics = calculateMetrics(metricLandmarks);
+        // 3. CALCULATE METRICS (Using Robust Virtual Chin and Aspect-Ratio)
+        const metrics = calculateMetrics(metricLandmarks, width / height);
 
         // APPLY TARE VISUALLY (So canvas matches HUD)
         const displayMetrics = { ...metrics };
@@ -299,10 +299,15 @@ const CameraView: React.FC<Props> = ({ onCameraReady, onMetricsUpdate, onTraject
           displayMetrics.openingAmplitude = Math.max(0, displayMetrics.openingAmplitude - tare.opening);
         }
 
-        // ZERO-START MASK (Match App.tsx) - Increased to 5.0u for solid zero
-        if (displayMetrics.openingAmplitude < 5.0) {
+        // V17.0: 10u HYSTERESIS GATE (Instant zero for closed mouth)
+        // This ensures clinical stability when starting a rep.
+        if (displayMetrics.openingAmplitude < 10.0) {
           displayMetrics.openingAmplitude = 0;
           displayMetrics.lateralDeviation = 0;
+
+          // Sync raw metrics too to avoid Rep pollution
+          metrics.openingAmplitude = 0;
+          metrics.lateralDeviation = 0;
         }
 
         onMetricsUpdate(metrics, metricLandmarks);

@@ -18,7 +18,7 @@ const GuidanceSystem: React.FC<Props> = ({ message, subMessage, progress }) => {
 
   return (
     <div className={`fixed top-8 md:top-12 left-1/2 -translate-x-1/2 z-[200] w-full max-w-lg px-6 transition-all duration-1000 transform ${visible ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-8'}`}>
-      <div className="bg-white/5 backdrop-blur-3xl p-8 rounded-[40px] border border-white/10 shadow-[0_40px_80px_rgba(0,0,0,0.6)] relative overflow-hidden text-center group">
+      <div className="bg-white/5 backdrop-blur-3xl p-5 md:p-6 rounded-[40px] border border-white/10 shadow-[0_40px_80px_rgba(0,0,0,0.6)] relative overflow-hidden text-center group">
         <style>{`
             @keyframes slide-right {
                 0% { transform: translateX(-100%); opacity: 0; }
