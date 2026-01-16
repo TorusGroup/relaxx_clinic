@@ -54,16 +54,7 @@ const Notification: React.FC<Props> = ({ message, type = 'warning', isVisible, i
         ${isVisible ? 'opacity-100 scale-100' : 'opacity-0 scale-95 translate-z-0'}
       `}
         >
-            <div className={`backdrop-blur-2xl px-8 py-5 rounded-[24px] border ${colors[type]} shadow-[0_20px_50px_rgba(0,0,0,0.5)] flex items-center gap-5 min-w-[320px] animate-pulse-subtle`}>
-                <style>{`
-                    @keyframes pulse-subtle {
-                        0%, 100% { transform: scale(1); opacity: 1; }
-                        50% { transform: scale(1.02); opacity: 0.95; }
-                    }
-                    .animate-pulse-subtle {
-                        animation: pulse-subtle 3s ease-in-out infinite;
-                    }
-                `}</style>
+            <div className={`backdrop-blur-2xl px-8 py-5 rounded-[24px] border ${colors[type]} shadow-[0_20px_50px_rgba(0,0,0,0.5)] flex items-center gap-5 min-w-[320px]`}>
                 <div className={`p-2 rounded-xl bg-white/5 border border-white/10 ${type === 'error' ? 'text-rose-400' : 'text-[#00FF66]'}`}>
                     {getIcon()}
                 </div>

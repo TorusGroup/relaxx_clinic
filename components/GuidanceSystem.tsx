@@ -35,7 +35,7 @@ const GuidanceSystem: React.FC<Props> = ({ message, subMessage, progress }) => {
           <div className="h-full w-1/3 bg-gradient-to-r from-transparent via-[#00FF66] to-transparent animate-slide-right" />
         </div>
 
-        <h3 className="text-white text-xl md:text-2xl font-black italic tracking-tighter uppercase leading-none mb-4">
+        <h3 className="text-white text-xl md:text-2xl font-black tracking-tighter uppercase leading-none mb-4">
           {message}
         </h3>
 
@@ -44,7 +44,7 @@ const GuidanceSystem: React.FC<Props> = ({ message, subMessage, progress }) => {
             <div className="h-[1px] flex-1 bg-gradient-to-r from-transparent to-white/10" />
             <div className="flex items-center gap-2">
               <span className="flex h-1.5 w-1.5 rounded-full bg-[#00FF66] animate-pulse" />
-              <p className="text-[#00FF66] text-[10px] font-black uppercase tracking-[0.5em] opacity-60 italic">
+              <p className="text-[#00FF66] text-[10px] font-black uppercase tracking-[0.5em] opacity-60">
                 {subMessage}
               </p>
             </div>

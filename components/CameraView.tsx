@@ -43,9 +43,9 @@ const CameraView: React.FC<Props> = ({ onCameraReady, onMetricsUpdate, onTraject
       // Config: Freq 30Hz, MinCutoff 1.0 (slow), Beta 0.0 (latency), DCutoff 1.0
       // For Chin, we want HIGH stability.
       filtersRef.current.set(idx, {
-        x: new OneEuroFilter(30, 0.05, 0.001, 1),
-        y: new OneEuroFilter(30, 0.05, 0.001, 1),
-        z: new OneEuroFilter(30, 0.05, 0.001, 1)
+        x: new OneEuroFilter(30, 0.01, 0.001, 1),
+        y: new OneEuroFilter(30, 0.01, 0.001, 1),
+        z: new OneEuroFilter(30, 0.01, 0.001, 1)
       });
       // Force internal state to current value immediately
       filtersRef.current.get(idx)!.x.filter(initValue.x, -1); // prime the filter
@@ -73,88 +73,86 @@ const CameraView: React.FC<Props> = ({ onCameraReady, onMetricsUpdate, onTraject
 
         const rawLandmarks = results.multiFaceLandmarks[0];
         const timestamp = Date.now() / 1000;
+        const AR = width / height;
+
+        // --- V18.0 SQUARE GEOMETRY ENGINE ---
+        // We map landmarks to a virtual square space [0..AR, 0..1]
+        // This ensures all Euclidean math (rotations, distances) is resolution-independent.
+        const sqRawLandmarks = rawLandmarks.map((p: any) => ({
+          x: p.x * AR,
+          y: p.y,
+          z: p.z
+        }));
 
         // --- V9.0 POSITION GUARDRAILS (BLOCKING) ---
         // 1. HEAD ROLL (TILT)
-        const leftEye = rawLandmarks[33];
-        const rightEye = rawLandmarks[263];
-        // Calculate angle in radians, convert to degrees
-        // Note: Y increases downwards.
-        const rollRad = calculateRollAngle(leftEye, rightEye);
+        const leftEyeSide = sqRawLandmarks[33];
+        const rightEyeSide = sqRawLandmarks[263];
+        const rollRad = calculateRollAngle(leftEyeSide, rightEyeSide);
         const rollDeg = toDegrees(rollRad);
 
         // 2. HEAD YAW (ROTATION)
-        const noseTip = rawLandmarks[1];
-        const leftCheek = rawLandmarks[234];
-        const rightCheek = rawLandmarks[454];
+        const noseTip = sqRawLandmarks[1];
+        const leftCheek = sqRawLandmarks[234];
+        const rightCheek = sqRawLandmarks[454];
         const dLeft = distance(noseTip, leftCheek);
         const dRight = distance(noseTip, rightCheek);
         const yawRatio = Math.abs(dLeft - dRight) / Math.max(dLeft, dRight);
 
-        // 3. DEPTH (DISTANCE)
-        const faceWidthPx = distance(leftCheek, rightCheek) * width; // Approximate
-        const coverageRatio = faceWidthPx / width;
+        // 3. DEPTH (DISTANCE) - Horizontal IPD in square space is now invariant
+        const faceWidthSq = distance(leftCheek, rightCheek);
+        const coverageRatio = (faceWidthSq / AR); // Normalize back for thresholding
 
         let warning = null;
 
         if (Math.abs(rollDeg) > 8) warning = "CABEÇA INCLINADA ⚠️";
-        else if (yawRatio > 0.30) warning = "OLHE PARA FRENTE ⚠️"; // 30% tolerance
+        else if (yawRatio > 0.45) warning = "OLHE PARA FRENTE ⚠️"; // V18: Increased tolerance
         else if (coverageRatio < 0.15) warning = "APROXIME-SE 📷";
         else if (coverageRatio > 0.65) warning = "AFASTE-SE 📷";
 
         if (warning) {
-          // Update UI (Throttled to prevent React spam)
           if (!activeWarning || activeWarning.msg !== warning) {
             setActiveWarning({ msg: warning, type: 'warning' });
           }
-
-          // V10.0 ORANGE GUARDRAIL
           canvasCtx.strokeStyle = "rgba(255, 140, 0, 0.6)";
           canvasCtx.lineWidth = 12;
           canvasCtx.strokeRect(0, 0, width, height);
-
           canvasCtx.restore();
           return;
         } else {
           if (activeWarning) setActiveWarning(null);
         }
 
-        // --- CORRECTION: ROTATE FACE TO NEUTRALIZE TILT ---
-        // If we are here, tilt is < 8deg but maybe > 0. Let's correct it mathematically.
-        // We rotate everything by -rollRad around the nose (landmark 1).
-        const pivot = rawLandmarks[1];
-        const correctedLandmarks = rawLandmarks.map((p: any) => rotatePoint(p, -rollRad, pivot));
+        // --- CORRECTION: ROTATE FACE TO NEUTRALIZE TILT (In Square Space) ---
+        const pivot = sqRawLandmarks[1];
+        const sqCorrectedLandmarks = sqRawLandmarks.map((p: any) => rotatePoint(p, -rollRad, pivot));
 
-        // 1. ADVANCED SMOOTHING (Use CORRECTED landmarks)
+        // 1. ADVANCED SMOOTHING (Use SQUARE CORRECTED landmarks)
         const indicesToSmooth = Array.from(new Set([
           ...Object.values(LANDMARK_INDICES).filter(v => typeof v === 'number') as number[],
           ...LANDMARK_INDICES.MANDIBLE_PATH,
           ...[377, 400, 378, 148, 175, 150]
         ]));
 
-        const smoothedLandmarks = [...correctedLandmarks]; // Start with corrected
+        const sqSmoothedLandmarks = [...sqCorrectedLandmarks];
 
         indicesToSmooth.forEach((idx) => {
-          // Use corrected landmarks for filter input
-          const f = getFilters(idx, correctedLandmarks[idx]);
-          smoothedLandmarks[idx] = {
-            x: f.x.filter(correctedLandmarks[idx].x, timestamp),
-            y: f.y.filter(correctedLandmarks[idx].y, timestamp),
-            z: f.z.filter(correctedLandmarks[idx].z, timestamp)
+          const f = getFilters(idx, sqCorrectedLandmarks[idx]);
+          sqSmoothedLandmarks[idx] = {
+            x: f.x.filter(sqCorrectedLandmarks[idx].x, timestamp),
+            y: f.y.filter(sqCorrectedLandmarks[idx].y, timestamp),
+            z: f.z.filter(sqCorrectedLandmarks[idx].z, timestamp)
           };
         });
 
-        // --- V9.1 MANDIBLE PHYSICS LOCK (Scale Invariant) ---
-        // Concept: The chin bone (152) is rigidly connected to the lower lip bone insertion.
-        // We assume the distance LowerLipBottom (17) -> Chin (152) is proportionally CONSTANT to Face Size (IPD).
-
-        const lowerLipBottom = smoothedLandmarks[17];
-        const chin = smoothedLandmarks[LANDMARK_INDICES.CHIN];
+        // Use sqSmoothedLandmarks for all calculations below
+        const smoothedLandmarks = sqSmoothedLandmarks;
+        const lowerLipBottom = sqSmoothedLandmarks[17];
+        const lEye = sqSmoothedLandmarks[LANDMARK_INDICES.LEFT_EYE];
+        const rEye = sqSmoothedLandmarks[LANDMARK_INDICES.RIGHT_EYE];
+        const nose = sqSmoothedLandmarks[LANDMARK_INDICES.NOSE];
+        const chin = sqSmoothedLandmarks[LANDMARK_INDICES.CHIN];
         const rawChin = chin;
-
-        const nose = smoothedLandmarks[LANDMARK_INDICES.NOSE];
-        const lEye = smoothedLandmarks[LANDMARK_INDICES.LEFT_EYE];
-        const rEye = smoothedLandmarks[LANDMARK_INDICES.RIGHT_EYE];
 
         // V9.9 FAILSAFE: Ensure valid IPD to prevent Division-by-Zero
         let currentIPD = Math.sqrt(Math.pow(rEye.x - lEye.x, 2) + Math.pow(rEye.y - lEye.y, 2));
@@ -242,13 +240,13 @@ const CameraView: React.FC<Props> = ({ onCameraReady, onMetricsUpdate, onTraject
 
             const projX = lowerLipBottom.x + rotX;
             const projY = lowerLipBottom.y + rotY;
-            return { x: (1 - projX) * width, y: projY * height };
+            return { x: (1 - (projX / AR)) * width, y: projY * height };
           });
         } else {
           // Fallback if ref is missing
           jawPoints = M_PATH.map(idx => {
             const p = smoothedLandmarks[idx];
-            return { x: (1 - p.x) * width, y: p.y * height };
+            return { x: (1 - (p.x / AR)) * width, y: p.y * height };
           });
         }
 
@@ -290,7 +288,7 @@ const CameraView: React.FC<Props> = ({ onCameraReady, onMetricsUpdate, onTraject
         metricLandmarks[152] = virtualChin;
 
         // 3. CALCULATE METRICS (Using Robust Virtual Chin and Aspect-Ratio)
-        const metrics = calculateMetrics(metricLandmarks, width / height);
+        const metrics = calculateMetrics(metricLandmarks);
 
         // APPLY TARE VISUALLY (So canvas matches HUD)
         const displayMetrics = { ...metrics };
@@ -319,8 +317,8 @@ const CameraView: React.FC<Props> = ({ onCameraReady, onMetricsUpdate, onTraject
         const drawPoint = (p: Landmark, size = 1.5, color = COLORS.RELAXX_GREEN) => {
           canvasCtx.fillStyle = color;
           canvasCtx.beginPath();
-          // Mirror X
-          canvasCtx.arc((1 - p.x) * canvasRef.current!.width, p.y * canvasRef.current!.height, size, 0, 2 * Math.PI);
+          // Mirror X + Un-distort from Square Space
+          canvasCtx.arc((1 - (p.x / AR)) * canvasRef.current!.width, p.y * canvasRef.current!.height, size, 0, 2 * Math.PI);
           canvasCtx.fill();
         };
 
@@ -328,8 +326,8 @@ const CameraView: React.FC<Props> = ({ onCameraReady, onMetricsUpdate, onTraject
           canvasCtx.globalAlpha = alpha;
           canvasCtx.strokeStyle = color;
           canvasCtx.beginPath();
-          canvasCtx.moveTo((1 - p1.x) * canvasRef.current!.width, p1.y * canvasRef.current!.height);
-          canvasCtx.lineTo((1 - p2.x) * canvasRef.current!.width, p2.y * canvasRef.current!.height);
+          canvasCtx.moveTo((1 - (p1.x / AR)) * canvasRef.current!.width, p1.y * canvasRef.current!.height);
+          canvasCtx.lineTo((1 - (p2.x / AR)) * canvasRef.current!.width, p2.y * canvasRef.current!.height);
           canvasCtx.stroke();
         };
 
@@ -361,7 +359,7 @@ const CameraView: React.FC<Props> = ({ onCameraReady, onMetricsUpdate, onTraject
         drawPoint(lowerLipExt, 2, '#FFFFFF');
 
         // VISUAL MATH
-        const textX = ((1 - upper.x) * canvasRef.current!.width) + 20;
+        const textX = ((1 - (upper.x / AR)) * canvasRef.current!.width) + 20;
         const textY = (upper.y * canvasRef.current!.height);
 
         canvasCtx.font = "600 12px 'JetBrains Mono'";
