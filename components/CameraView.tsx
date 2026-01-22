@@ -284,6 +284,16 @@ const CameraView: React.FC<Props> = ({ onCameraReady, onMetricsUpdate, onTraject
         // 3. HUD Metrics
         visualizer.drawMetrics(upperLipInner, stableAmp, displayMetrics.lateralDeviation);
 
+        // V20.2 DEBUG OVERLAY
+        visualizer.drawDebugInfo(
+          width,
+          height,
+          pixelIPD,
+          stabilizer.stabilizeAmplitude(stabilizer.projectOpeningAcrossAxis(upperLipInner, lowerLipInner, perpAngle, pixelIPD, width, height).amplitudePx),
+          toDegrees(perpAngle - Math.PI / 2),
+          30
+        );
+
         canvasCtx.restore();
       } catch (loopError) {
         console.error("FATAL: CameraView Loop Crashed", loopError);

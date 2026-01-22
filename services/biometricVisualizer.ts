@@ -132,4 +132,36 @@ export class BiometricVisualizer {
         // Reset shadows
         this.ctx.shadowBlur = 0;
     }
+
+    /**
+     * Draws debug information for diagnosis.
+     */
+    drawDebugInfo(
+        width: number,
+        height: number,
+        pixelIPD: number,
+        amplitudePx: number,
+        rollDeg: number,
+        rawFps: number
+    ) {
+        const x = 20;
+        let y = 140;
+        const lineHeight = 14;
+
+        this.ctx.font = "bold 10px monospace";
+        this.ctx.fillStyle = "rgba(0, 0, 0, 0.7)";
+        this.ctx.fillRect(x - 5, y - 12, 120, 100);
+
+        this.ctx.fillStyle = "#00FF66";
+        this.ctx.fillText(`CANVAS: ${width}x${height}`, x, y); y += lineHeight;
+        this.ctx.fillText(`IPD (px): ${pixelIPD.toFixed(1)}`, x, y); y += lineHeight;
+        this.ctx.fillText(`AMP (px): ${amplitudePx.toFixed(1)}`, x, y); y += lineHeight;
+
+        // Calculated Ratio (Amp/IPD) * 65
+        const metric = (amplitudePx / (pixelIPD || 1)) * 65;
+        this.ctx.fillText(`RES (mm): ${metric.toFixed(1)}`, x, y); y += lineHeight;
+
+        this.ctx.fillText(`ROLL: ${rollDeg.toFixed(1)}°`, x, y); y += lineHeight;
+        this.ctx.fillText(`FPS: ${rawFps.toFixed(0)}`, x, y);
+    }
 }
