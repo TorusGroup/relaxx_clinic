@@ -106,8 +106,10 @@ export class BiometricVisualizer {
         this.drawPoint(projectedPoint, 2, '#FFFFFF');
 
         // DRAW DEVIATION STRUT (Connecting axial projection to actual center)
-        this.drawLine(projectedPoint, lowerLip, '#FF3333', 0.8);
-        this.drawPoint(lowerLip, 2, '#FF3333');
+        // V20.6: SUBTLE VISUALIZATION
+        // Reduced alpha and width to avoid confusion with the main white line
+        this.drawLine(projectedPoint, lowerLip, '#FF3333', 0.4, 1);
+        this.drawPoint(lowerLip, 1.5, '#FF3333');
     }
 
     /**
