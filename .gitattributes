@@ -1,0 +1,3 @@
+# Explicitly disable Git LFS for all files to fix Netlify deploy
+* -filter=lfs
+* -text
