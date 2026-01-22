@@ -167,47 +167,27 @@ const CameraView: React.FC<Props> = ({ onCameraReady, onMetricsUpdate, onTraject
         // We keep smoothedLandmarks as NATURAL for rendering.
 
         // --- V9.7 TRAJECTORY ENGINE (Z-Axis Invariant) ---
-        // Use Relative Motion (Chin - Nose) NORMALIZED by Face Scale (IPD)
-        const REFERENCE_IPD = 0.06; // Normalized reference size (approx)
-        const zCorrection = REFERENCE_IPD / currentIPD;
+        // --- V20.6 TRAJECTORY ENGINE (Pixel Space) ---
+        // We now calculate trajectory in pure pixels to ensure consistent filling of the graph
+        // regardless of screen aspect ratio or normalized IPD differences.
 
-        // Gate: Only record if mouth is actually open > 2.0u (Avoid Static Noise)
-        // Note: displayMetrics calculated later, but we need raw check
-        const rawOp = Math.sqrt(Math.pow(smoothedLandmarks[LANDMARK_INDICES.LOWER_LIP].y - smoothedLandmarks[LANDMARK_INDICES.UPPER_LIP].y, 2));
-        const isOpen = rawOp > 0.015;
+        // Gate: Only record if mouth is actually open > 2.0mm (approx 5px)
+        const rawOpPx = Math.abs((smoothedLandmarks[14].y - smoothedLandmarks[13].y) * height);
+        const isOpen = rawOpPx > 5.0;
 
         if (isOpen && onTrajectoryUpdate) {
-          // Calculate Relative Motion corrected for Z-Depth
-          let relX = (nose.x - lockedChin.x) * zCorrection;
-          let relY = (lockedChin.y - nose.y) * zCorrection; // Positive = Down
+          // Pixel Positions
+          const nosePx = { x: nose.x * width, y: nose.y * height };
+          const chinPx = { x: lockedChin.x * width, y: lockedChin.y * height };
 
-          // V20.6: PORTRAIT COMPENSATION FOR TRAJECTORY
-          // Ensure graph fills the canvas on mobile (Vertical Compression Fix)
-          if (height > width) {
-            const aspect = height / width;
-            relY *= Math.min(aspect, 1.8);
-          }
+          // Relative Motion (Chin - Nose) in Pixels
+          // We use a small dampener (scale 0.5) to keep it inside the graph bounds
+          // but since it's pixels, it will scale naturally with the screen.
+          const relX = (nosePx.x - chinPx.x);
+          const relY = (chinPx.y - nosePx.y); // Positive = Down (Screen Y is inverted relative to graph usually)
 
-          // V20.6: TRAJECTORY SMOOTHING (Low-Pass Filter)
-          // Reduces "rabiscos" (jitter) in the graph
-          const TRAJ_ALPHA = 0.3; // 30% new, 70% old
-          if (prevSmoothedRef.current?.trajectory) {
-            relX = prevSmoothedRef.current.trajectory.x + TRAJ_ALPHA * (relX - prevSmoothedRef.current.trajectory.x);
-            relY = prevSmoothedRef.current.trajectory.y + TRAJ_ALPHA * (relY - prevSmoothedRef.current.trajectory.y);
-          }
-          // Store for next frame (using existing ref or new prop on ref)
-          // We'll treat prevSmoothedRef as a safe place or use a local let if needed not to pollute types globally yet
-          // For safety, let's use a specialized ref or just simple variable if outside loop?
-          // Actually, prevSmoothedRef is typed for DiagnosticMetrics. We shouldn't hack it.
-          // Let's rely on the natural damping of the input landmarks for now + the Compensation to fix the size.
-          // Re-reading: The landmarks ARE already smoothed by OneEuroFilter.
-          // The issue might just be the small scale showing noise.
-          // Let's stick to the Compensation first which massively improves signal-to-noise ratio by boosting signal.
-
-          // Re-instating just the compensation and simple sanitization for now.
-          // If user needs more smoothing, we can add a specific ref later.
-
-          // V9.9 SANITIZATION: Protect against NaN/Inf explosions
+          // Note: TrajectoryGraph expects raw deltas. 
+          // We'll handle scaling in the Graph component.
           if (Number.isFinite(relX) && Number.isFinite(relY)) {
             onTrajectoryUpdate({ x: relX, y: relY });
           }

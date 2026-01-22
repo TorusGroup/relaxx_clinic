@@ -42,10 +42,11 @@ const TrajectoryGraph: React.FC<Props> = ({ path, width = 80, height = 400 }) =>
 
         if (path.length === 0) return;
 
-        // V20.6 ZOOM: Increased for Mobile fill (8000 -> 14000)
-        // This ensures the graph looks "full" even with damped inputs
-        const SCALE_X = 14000;
-        const SCALE_Y = 14000;
+        // V20.6 ZOOM: Pixel Space Scale
+        // Reduced from 8000x (Normalized) to 2.5x (Pixels)
+        // This ensures the graph fills the canvas even on Mobile
+        const SCALE_X = 2.5;
+        const SCALE_Y = 2.5;
 
         const startP = path[0];
         const originX = width / 2;
@@ -53,11 +54,11 @@ const TrajectoryGraph: React.FC<Props> = ({ path, width = 80, height = 400 }) =>
 
         ctx.beginPath();
         ctx.strokeStyle = '#00FF66';
-        ctx.lineWidth = 4; // Thicker for mobile visibility
+        ctx.lineWidth = 3;
         ctx.lineCap = 'round';
         ctx.lineJoin = 'round';
-        ctx.shadowBlur = 15; // Enhanced glow
-        ctx.shadowColor = 'rgba(0, 255, 102, 0.6)';
+        ctx.shadowBlur = 10;
+        ctx.shadowColor = 'rgba(0, 255, 102, 0.4)';
 
         ctx.moveTo(originX, originY);
 
