@@ -288,16 +288,6 @@ const CameraView: React.FC<Props> = ({ onCameraReady, onMetricsUpdate, onTraject
         // We update the app state only after all compensations (Stabilizer & Portrait Fix)
         onMetricsUpdate(displayMetrics, metricLandmarks);
 
-        // V20.2 DEBUG OVERLAY
-        visualizer.drawDebugInfo(
-          width,
-          height,
-          pixelIPD,
-          stabilizer.stabilizeAmplitude(stabilizer.projectOpeningAcrossAxis(upperLipInner, lowerLipInner, perpAngle, pixelIPD, width, height).amplitudePx),
-          toDegrees(perpAngle - Math.PI / 2),
-          30
-        );
-
         canvasCtx.restore();
       } catch (loopError) {
         console.error("FATAL: CameraView Loop Crashed", loopError);

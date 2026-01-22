@@ -91,11 +91,21 @@ export class BiometricStabilizer {
         // This represents the "Pixel Opening" along the axis
         const amplitudePx = (lipVecPx.x * axisVec.x) + (lipVecPx.y * axisVec.y);
 
-        // 5. Calculate Projected Point (Back to Normalized for Visualization)
-        // We project in pixels, then normalize back to 0..1 for the Visualizer to draw
+        // 5. V20.5: PORTRAIT COMPENSATOR (Visual & Metric)
+        // We apply the compensation to the Pixel Vector length so the White Line
+        // visually matches the corrected Metric number.
+        let compensatedAmplitudePx = amplitudePx;
+
+        if (height > width) {
+            const aspectRatio = height / width;
+            const compensation = Math.min(aspectRatio, 1.8);
+            compensatedAmplitudePx *= compensation;
+        }
+
+        // 6. Calculate Projected Point (Using COMPENSATED length)
         const projectedPx = {
-            x: upperPx.x + (axisVec.x * amplitudePx),
-            y: upperPx.y + (axisVec.y * amplitudePx)
+            x: upperPx.x + (axisVec.x * compensatedAmplitudePx),
+            y: upperPx.y + (axisVec.y * compensatedAmplitudePx)
         };
 
         const projectedPoint = {
@@ -104,22 +114,9 @@ export class BiometricStabilizer {
             z: lower.z
         };
 
-        // 6. Millimeters using clinical reference (65mm IPD)
-        // Ratio is now (Pixel Opening / Pixel IPD) * 65mm
-        // This is Aspect Ratio Invariant!
-        let amplitudeMM = (amplitudePx / pixelIPD) * 65;
-
-        // V20.4 PORTRAIT COMPENSATOR
-        // In Portrait mode (9:16), the Y-axis density appears "compressed" relative to X-axis IPD
-        // due to camera sensor scaling behaviors (Zoom-to-fill).
-        // We apply a compensator to restore the X/Y physical parity.
-        if (height > width) {
-            const aspectRatio = height / width;
-            // Cap the compensation to avoid explosion on extreme screens (e.g. foldables)
-            // 1.77 (16:9) is the standard target.
-            const compensation = Math.min(aspectRatio, 1.8);
-            amplitudeMM *= compensation;
-        }
+        // 7. Millimeters using clinical reference (65mm IPD)
+        // Uses the compensated pixel length for true metric
+        const amplitudeMM = (compensatedAmplitudePx / pixelIPD) * 65;
 
         return {
             projectedPoint,
