@@ -136,6 +136,9 @@ export class BiometricVisualizer {
     /**
      * Draws debug information for diagnosis.
      */
+    /**
+     * Draws debug information for diagnosis.
+     */
     drawDebugInfo(
         width: number,
         height: number,
@@ -144,24 +147,33 @@ export class BiometricVisualizer {
         rollDeg: number,
         rawFps: number
     ) {
-        const x = 20;
-        let y = 140;
+        // CENTERED OVERLAY to guarantee visibility on Mobile
+        const x = width / 2 - 60;
+        let y = height / 2 - 50;
         const lineHeight = 14;
 
-        this.ctx.font = "bold 10px monospace";
-        this.ctx.fillStyle = "rgba(0, 0, 0, 0.7)";
-        this.ctx.fillRect(x - 5, y - 12, 120, 100);
+        this.ctx.font = "bold 14px monospace";
+        this.ctx.fillStyle = "rgba(0, 0, 0, 0.85)";
+        this.ctx.strokeStyle = "#FF3333";
+        this.ctx.lineWidth = 2;
 
-        this.ctx.fillStyle = "#00FF66";
-        this.ctx.fillText(`CANVAS: ${width}x${height}`, x, y); y += lineHeight;
-        this.ctx.fillText(`IPD (px): ${pixelIPD.toFixed(1)}`, x, y); y += lineHeight;
-        this.ctx.fillText(`AMP (px): ${amplitudePx.toFixed(1)}`, x, y); y += lineHeight;
+        // Draw Box
+        this.ctx.fillRect(x - 10, y - 20, 160, 140);
+        this.ctx.globalAlpha = 1.0;
+        this.ctx.fillStyle = "#00FF66"; // Bright Green Text
+
+        this.ctx.fillText(`CANVAS: ${width.toFixed(0)}x${height.toFixed(0)}`, x, y); y += 20;
+        this.ctx.fillText(`IPD (px): ${pixelIPD.toFixed(1)}`, x, y); y += 20;
+        this.ctx.fillText(`AMP (px): ${amplitudePx.toFixed(1)}`, x, y); y += 20;
 
         // Calculated Ratio (Amp/IPD) * 65
         const metric = (amplitudePx / (pixelIPD || 1)) * 65;
-        this.ctx.fillText(`RES (mm): ${metric.toFixed(1)}`, x, y); y += lineHeight;
+        this.ctx.fillText(`RES (mm): ${metric.toFixed(1)}`, x, y); y += 20;
 
-        this.ctx.fillText(`ROLL: ${rollDeg.toFixed(1)}°`, x, y); y += lineHeight;
+        this.ctx.fillText(`ROLL: ${rollDeg.toFixed(1)}°`, x, y); y += 20;
         this.ctx.fillText(`FPS: ${rawFps.toFixed(0)}`, x, y);
+
+        // SAFE ZONE BORDER
+        this.ctx.strokeRect(10, 10, width - 20, height - 20);
     }
 }
