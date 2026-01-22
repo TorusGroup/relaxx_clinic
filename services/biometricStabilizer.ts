@@ -59,41 +59,60 @@ export class BiometricStabilizer {
     /**
      * Calculates the axial projection (opening) onto the face vertical axis.
      */
+    /**
+     * Calculates the axial projection (opening) onto the face vertical axis using PIXEL SPACE.
+     * Fixing Aspect Ratio distortion (Mobile Portrait vs Desktop Landscape).
+     */
     projectOpeningAcrossAxis(
         upper: Landmark,
         lower: Landmark,
         perpAngle: number,
-        currentIPD: number
+        pixelIPD: number, // Now requires IPD in pixels
+        width: number,
+        height: number
     ) {
-        // 1. Face Y-Axis Unit Vector
+        // 1. Convert Landmarks to Pixel Space
+        const upperPx = { x: upper.x * width, y: upper.y * height };
+        const lowerPx = { x: lower.x * width, y: lower.y * height };
+
+        // 2. Face Y-Axis Unit Vector (Angle is preserved in 2D plane)
         const axisVec = {
             x: Math.cos(perpAngle),
             y: Math.sin(perpAngle)
         };
 
-        // 2. Vector from Upper Lip to Lower Lip
-        const lipVec = {
-            x: lower.x - upper.x,
-            y: lower.y - upper.y
+        // 3. Vector from Upper Lip to Lower Lip (in Pixels)
+        const lipVecPx = {
+            x: lowerPx.x - upperPx.x,
+            y: lowerPx.y - upperPx.y
         };
 
-        // 3. Scalar Projection (Dot Product)
-        const amplitudeScalar = (lipVec.x * axisVec.x) + (lipVec.y * axisVec.y);
+        // 4. Scalar Projection (Dot Product in Pixels)
+        // This represents the "Pixel Opening" along the axis
+        const amplitudePx = (lipVecPx.x * axisVec.x) + (lipVecPx.y * axisVec.y);
 
-        // 4. Projected Point for Visualization
+        // 5. Calculate Projected Point (Back to Normalized for Visualization)
+        // We project in pixels, then normalize back to 0..1 for the Visualizer to draw
+        const projectedPx = {
+            x: upperPx.x + (axisVec.x * amplitudePx),
+            y: upperPx.y + (axisVec.y * amplitudePx)
+        };
+
         const projectedPoint = {
-            x: upper.x + (axisVec.x * amplitudeScalar),
-            y: upper.y + (axisVec.y * amplitudeScalar),
+            x: projectedPx.x / width,
+            y: projectedPx.y / height,
             z: lower.z
         };
 
-        // 5. Millimeters using clinical reference (65mm IPD)
-        const amplitudeMM = (amplitudeScalar / currentIPD) * 65;
+        // 6. Millimeters using clinical reference (65mm IPD)
+        // Ratio is now (Pixel Opening / Pixel IPD) * 65mm
+        // This is Aspect Ratio Invariant!
+        const amplitudeMM = (amplitudePx / pixelIPD) * 65;
 
         return {
             projectedPoint,
             amplitudeMM,
-            amplitudeScalar
+            amplitudePx
         };
     }
 }

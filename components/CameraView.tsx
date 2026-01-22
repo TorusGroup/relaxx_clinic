@@ -4,6 +4,8 @@ import Notification from './Notification'; // V10.0 UI
 import { calculateMetrics } from '../services/analysisEngine';
 import { DiagnosticMetrics, Landmark } from '../types';
 import { BiometricStabilizer } from '../services/biometricStabilizer';
+import { BiometricVisualizer } from '../services/biometricVisualizer';
+import { PostureGuard } from '../services/postureGuard';
 import { chaikinSmooth, calculateRollAngle, toDegrees, rotatePoint, distance } from '../utils/geometry';
 
 interface Props {
@@ -44,11 +46,14 @@ const CameraView: React.FC<Props> = ({ onCameraReady, onMetricsUpdate, onTraject
     const canvasCtx = canvasRef.current.getContext('2d');
     if (!canvasCtx) return;
 
-    // Canvas Dimensions
     const { width, height } = canvasRef.current;
 
+    // V20.0: Instantiate Visualizer
+    const visualizer = new BiometricVisualizer(canvasCtx, width, height);
+    visualizer.clear();
+
     canvasCtx.save();
-    canvasCtx.clearRect(0, 0, width, height);
+    // canvasCtx.clearRect(0, 0, width, height); // Handled by visualizer
 
     if (results.multiFaceLandmarks && results.multiFaceLandmarks.length > 0) {
       try {
@@ -57,33 +62,9 @@ const CameraView: React.FC<Props> = ({ onCameraReady, onMetricsUpdate, onTraject
         const rawLandmarks = results.multiFaceLandmarks[0];
         const timestamp = Date.now() / 1000;
 
-        // --- V9.0 POSITION GUARDRAILS (BLOCKING) ---
-        // 1. HEAD ROLL (TILT)
-        const leftEye = rawLandmarks[33];
-        const rightEye = rawLandmarks[263];
-        // Calculate angle in radians, convert to degrees
-        // Note: Y increases downwards.
-        const rollRad = calculateRollAngle(leftEye, rightEye);
-        const rollDeg = toDegrees(rollRad);
-
-        // 2. HEAD YAW (ROTATION)
-        const noseTip = rawLandmarks[1];
-        const leftCheek = rawLandmarks[234];
-        const rightCheek = rawLandmarks[454];
-        const dLeft = distance(noseTip, leftCheek);
-        const dRight = distance(noseTip, rightCheek);
-        const yawRatio = Math.abs(dLeft - dRight) / Math.max(dLeft, dRight);
-
-        // 3. DEPTH (DISTANCE)
-        const faceWidthPx = distance(leftCheek, rightCheek) * width; // Approximate
-        const coverageRatio = faceWidthPx / width;
-
-        let warning = null;
-
-        if (Math.abs(rollDeg) > 8) warning = "CABEÇA INCLINADA ⚠️";
-        else if (yawRatio > 0.30) warning = "OLHE PARA FRENTE ⚠️"; // 30% tolerance
-        else if (coverageRatio < 0.15) warning = "APROXIME-SE 📷";
-        else if (coverageRatio > 0.65) warning = "AFASTE-SE 📷";
+        // --- V20.0 POSTURE GUARD (Refactored) ---
+        const { warning, rollDeg } = PostureGuard.check(rawLandmarks, width);
+        const rollRad = rollDeg * (Math.PI / 180); // Back to radians for rotation correction later
 
         if (warning) {
           // Update UI (Throttled to prevent React spam)
@@ -206,58 +187,32 @@ const CameraView: React.FC<Props> = ({ onCameraReady, onMetricsUpdate, onTraject
           }
         }
 
-        // --- V9.4 VISUALIZATION: ELLIPTICAL CHIN ---
-
-
-        // --- V14.0 PROCEDURAL RIGID MANDIBLE ---
-        // Projecting the mandible from the "Rigid Bone" captured in the first frame
+        // --- V9.4 VISUALIZATION: MANDIBLE & JAW ---
+        // V14.0 PROCEDURAL RIGID MANDIBLE
         const M_PATH = LANDMARK_INDICES.MANDIBLE_PATH;
         let jawPoints: { x: number, y: number }[] = [];
 
         if (mandibleOffsetsRef.current) {
           jawPoints = mandibleOffsetsRef.current.map(offset => {
-            // 1. Scale offset
             const scaledX = offset.x * currentIPD;
             const scaledY = offset.y * currentIPD;
-
-            // 2. Rotate by CURRENT roll (relative to anchor)
             const cos = Math.cos(currentRoll);
             const sin = Math.sin(currentRoll);
-
-            // Rotation formula for relative coordinates
             const rotX = scaledX * cos - scaledY * sin;
             const rotY = scaledX * sin + scaledY * cos;
-
             const projX = lowerLipBottom.x + rotX;
             const projY = lowerLipBottom.y + rotY;
             return { x: (1 - projX) * width, y: projY * height };
           });
         } else {
-          // Fallback if ref is missing
           jawPoints = M_PATH.map(idx => {
             const p = smoothedLandmarks[idx];
             return { x: (1 - p.x) * width, y: p.y * height };
           });
         }
 
-        // Hyper-Smooth for a liquid clinical look
-        const smoothJaw = chaikinSmooth(jawPoints, 3, false);
-
-        if (smoothJaw.length > 2) {
-          canvasCtx.beginPath();
-          canvasCtx.moveTo(smoothJaw[0].x, smoothJaw[0].y);
-          for (let i = 1; i < smoothJaw.length; i++) {
-            canvasCtx.lineTo(smoothJaw[i].x, smoothJaw[i].y);
-          }
-          canvasCtx.lineWidth = 3;
-          canvasCtx.strokeStyle = '#00FF66';
-          canvasCtx.shadowBlur = 15;
-          canvasCtx.shadowColor = 'rgba(0, 255, 102, 0.4)';
-          canvasCtx.lineCap = 'round';
-          canvasCtx.lineJoin = 'round';
-          canvasCtx.stroke();
-        }
-
+        // V20.0: Delegated to Visualizer
+        visualizer.drawJawbase(jawPoints);
 
         // 2. VIRTUAL CHIN (Metric Stability ONLY)
         // We use a clone for metrics to not affect the visual drawing (which needs natural shape)
@@ -295,45 +250,16 @@ const CameraView: React.FC<Props> = ({ onCameraReady, onMetricsUpdate, onTraject
 
         onMetricsUpdate(metrics, metricLandmarks);
 
-        // 4. DRAWING (Using Natural Smoothed Landmarks)
-        canvasCtx.lineWidth = 2;
-        canvasCtx.strokeStyle = COLORS.RELAXX_GREEN;
+        // V20.0: DRAWING DELEGATION
+        // 1. Reference Axis (Green Midline)
+        const perpAngle = visualizer.drawReferenceAxis(lEye, rEye);
 
-        const drawPoint = (p: Landmark, size = 1.5, color = COLORS.RELAXX_GREEN) => {
-          canvasCtx.fillStyle = color;
-          canvasCtx.beginPath();
-          // Mirror X
-          canvasCtx.arc((1 - p.x) * canvasRef.current!.width, p.y * canvasRef.current!.height, size, 0, 2 * Math.PI);
-          canvasCtx.fill();
-        };
-
-        const drawLine = (p1: Landmark, p2: Landmark, color = COLORS.RELAXX_GREEN, alpha = 0.4) => {
-          canvasCtx.globalAlpha = alpha;
-          canvasCtx.strokeStyle = color;
-          canvasCtx.beginPath();
-          canvasCtx.moveTo((1 - p1.x) * canvasRef.current!.width, p1.y * canvasRef.current!.height);
-          canvasCtx.lineTo((1 - p2.x) * canvasRef.current!.width, p2.y * canvasRef.current!.height);
-          canvasCtx.stroke();
-        };
-
-        // V16.0 ROTATIONAL MIDLINE: Perpendicular to eyes
-        const eyeAngle = calculateRollAngle(lEye, rEye);
-        const midlineLen = 0.25; // Constant length down
-        const midEye: Landmark = {
-          x: (lEye.x + rEye.x) / 2,
-          y: (lEye.y + rEye.y) / 2,
-          z: (lEye.z + rEye.z) / 2
-        };
-
-        // Project midline perpendicular to eye angle (eyeAngle + 90deg)
-        const perpAngle = eyeAngle + Math.PI / 2;
-        const midlineEnd: Landmark = {
-          x: midEye.x + Math.cos(perpAngle) * midlineLen,
-          y: midEye.y + Math.sin(perpAngle) * midlineLen,
-          z: midEye.z
-        };
-
-        drawLine(midEye, midlineEnd, COLORS.RELAXX_GREEN, 0.4);
+        // V20.1: PIXEL SPACE MATH (Aspect Ratio Correction)
+        // We calculate IPD in pixels to match the pixel-space projection in stabilizer
+        const pixelIPD = Math.sqrt(
+          Math.pow((rEye.x - lEye.x) * width, 2) +
+          Math.pow((rEye.y - lEye.y) * height, 2)
+        );
 
         // V19.2: Encapsulated Axial Projection & Stabilizer
         const upperLipInner = smoothedLandmarks[13]; // Inner Upper
@@ -343,37 +269,20 @@ const CameraView: React.FC<Props> = ({ onCameraReady, onMetricsUpdate, onTraject
           upperLipInner,
           lowerLipInner,
           perpAngle,
-          currentIPD
+          pixelIPD, // Use Pixel IPD
+          width,    // Pass Canvas Dimensions
+          height
         );
 
-        // DRAW AXIAL AMPLITUDE LINE
-        drawLine(upperLipInner, projectedPoint, '#FFFFFF', 1.0);
-        drawPoint(upperLipInner, 2, '#FFFFFF');
-        drawPoint(projectedPoint, 2, '#FFFFFF');
-
-        // DRAW DEVIATION STRUT (Connecting axial projection to actual center)
-        drawLine(projectedPoint, lowerLipInner, '#FF3333', 0.8);
-        drawPoint(lowerLipInner, 2, '#FF3333');
+        // 2. Axial Projection (White Line + Deviation)
+        visualizer.drawAxialProjection(upperLipInner, lowerLipInner, projectedPoint);
 
         // V19.1: SNAP-RESPONSE STABILIZER (Damped Display)
         const stableAmp = stabilizer.stabilizeAmplitude(amplitudeMM);
         displayMetrics.openingAmplitude = stableAmp;
 
-        // VISUAL HUD (In-CameraView rendering)
-        const textX = ((1 - upperLipInner.x) * canvasRef.current!.width) + 20;
-        const textY = (upperLipInner.y * canvasRef.current!.height);
-
-        canvasCtx.font = "600 12px 'JetBrains Mono'";
-        canvasCtx.fillStyle = "rgba(0, 255, 102, 0.9)";
-        canvasCtx.shadowColor = "rgba(0, 0, 0, 0.8)";
-        canvasCtx.shadowBlur = 4;
-
-        canvasCtx.fillText(`AMP: ${stableAmp.toFixed(1)}u`, textX, textY);
-
-        if (Math.abs(displayMetrics.lateralDeviation) > 1) {
-          canvasCtx.fillStyle = Math.abs(displayMetrics.lateralDeviation) > 5 ? "#FF3333" : "rgba(255, 255, 255, 0.8)";
-          canvasCtx.fillText(`DEV: ${displayMetrics.lateralDeviation.toFixed(1)}u`, textX, textY + 16);
-        }
+        // 3. HUD Metrics
+        visualizer.drawMetrics(upperLipInner, stableAmp, displayMetrics.lateralDeviation);
 
         canvasCtx.restore();
       } catch (loopError) {
