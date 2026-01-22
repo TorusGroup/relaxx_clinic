@@ -248,7 +248,7 @@ const CameraView: React.FC<Props> = ({ onCameraReady, onMetricsUpdate, onTraject
           displayMetrics.lateralDeviation = 0;
         }
 
-        onMetricsUpdate(metrics, metricLandmarks);
+        // onMetricsUpdate moved to end of loop (V20.4)
 
         // V20.0: DRAWING DELEGATION
         // 1. Reference Axis (Green Midline)
@@ -283,6 +283,10 @@ const CameraView: React.FC<Props> = ({ onCameraReady, onMetricsUpdate, onTraject
 
         // 3. HUD Metrics
         visualizer.drawMetrics(upperLipInner, stableAmp, displayMetrics.lateralDeviation);
+
+        // V20.4: Sync HUD with Corrected Math
+        // We update the app state only after all compensations (Stabilizer & Portrait Fix)
+        onMetricsUpdate(displayMetrics, metricLandmarks);
 
         // V20.2 DEBUG OVERLAY
         visualizer.drawDebugInfo(

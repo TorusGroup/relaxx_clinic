@@ -107,7 +107,19 @@ export class BiometricStabilizer {
         // 6. Millimeters using clinical reference (65mm IPD)
         // Ratio is now (Pixel Opening / Pixel IPD) * 65mm
         // This is Aspect Ratio Invariant!
-        const amplitudeMM = (amplitudePx / pixelIPD) * 65;
+        let amplitudeMM = (amplitudePx / pixelIPD) * 65;
+
+        // V20.4 PORTRAIT COMPENSATOR
+        // In Portrait mode (9:16), the Y-axis density appears "compressed" relative to X-axis IPD
+        // due to camera sensor scaling behaviors (Zoom-to-fill).
+        // We apply a compensator to restore the X/Y physical parity.
+        if (height > width) {
+            const aspectRatio = height / width;
+            // Cap the compensation to avoid explosion on extreme screens (e.g. foldables)
+            // 1.77 (16:9) is the standard target.
+            const compensation = Math.min(aspectRatio, 1.8);
+            amplitudeMM *= compensation;
+        }
 
         return {
             projectedPoint,
