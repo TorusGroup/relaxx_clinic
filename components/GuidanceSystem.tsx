@@ -18,7 +18,7 @@ const GuidanceSystem: React.FC<Props> = ({ message, subMessage, progress }) => {
 
   return (
     <div className={`fixed top-8 md:top-12 left-1/2 -translate-x-1/2 z-[200] w-full max-w-lg px-6 transition-all duration-1000 transform ${visible ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-8'}`}>
-      <div className="bg-white/5 backdrop-blur-3xl p-5 md:p-6 rounded-[40px] border border-white/10 shadow-[0_40px_80px_rgba(0,0,0,0.6)] relative overflow-hidden text-center group">
+      <div className="bg-white/5 backdrop-blur-3xl p-8 rounded-[40px] border border-white/10 shadow-[0_40px_80px_rgba(0,0,0,0.6)] relative overflow-hidden text-center group">
         <style>{`
             @keyframes slide-right {
                 0% { transform: translateX(-100%); opacity: 0; }
@@ -35,7 +35,7 @@ const GuidanceSystem: React.FC<Props> = ({ message, subMessage, progress }) => {
           <div className="h-full w-1/3 bg-gradient-to-r from-transparent via-[#00FF66] to-transparent animate-slide-right" />
         </div>
 
-        <h3 className="text-white text-xl md:text-2xl font-black tracking-tighter uppercase leading-none mb-4">
+        <h3 className="text-white text-xl md:text-2xl font-black italic tracking-tighter uppercase leading-none mb-4">
           {message}
         </h3>
 
@@ -44,7 +44,7 @@ const GuidanceSystem: React.FC<Props> = ({ message, subMessage, progress }) => {
             <div className="h-[1px] flex-1 bg-gradient-to-r from-transparent to-white/10" />
             <div className="flex items-center gap-2">
               <span className="flex h-1.5 w-1.5 rounded-full bg-[#00FF66] animate-pulse" />
-              <p className="text-[#00FF66] text-[10px] font-black uppercase tracking-[0.5em] opacity-60">
+              <p className="text-[#00FF66] text-[10px] font-black uppercase tracking-[0.5em] opacity-60 italic">
                 {subMessage}
               </p>
             </div>
