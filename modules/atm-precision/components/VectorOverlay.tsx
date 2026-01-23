@@ -46,10 +46,8 @@ export const VectorOverlay: React.FC<Props> = ({ landmarks, symmetryPlane, width
             ctx.stroke();
         };
 
-        // 0. DEBUG: Draw ALL landmarks faintly to confirm data flow
-        landmarks.forEach(l => {
-            drawPoint(l, 'rgba(255, 255, 255, 0.2)', 1);
-        });
+        // 0. CLEAN UI (Debug landmarks removed for production-readiness)
+
 
         // 1. Draw Symmetry Plane (Midline)
         if (symmetryPlane) {
@@ -85,36 +83,59 @@ export const VectorOverlay: React.FC<Props> = ({ landmarks, symmetryPlane, width
             }
         }
 
-        // 2. Draw Jaw Vector (Axial Opening)
+        // 2. Draw Jaw Vector (Axial Opening in Pixel Space)
         const upperLip = landmarks.find(l => l.id === 13);
         const lowerLip = landmarks.find(l => l.id === 14);
         const glabella = landmarks.find(l => l.id === 10);
         const philtrum = landmarks.find(l => l.id === 0);
 
         if (upperLip && lowerLip && glabella && philtrum) {
-            // Basis for Vertical Axis (Glabella -> Philtrum)
-            const vY = { x: philtrum.x - glabella.x, y: philtrum.y - glabella.y };
+            // Project into Pixel Space (Match Analyzer logic)
+            const uPx = { x: upperLip.x * width, y: upperLip.y * height };
+            const lPx = { x: lowerLip.x * width, y: lowerLip.y * height };
+            const gPx = { x: glabella.x * width, y: glabella.y * height };
+            const pPx = { x: philtrum.x * width, y: philtrum.y * height };
+
+            // Basis for Vertical Axis (Glabella -> Philtrum) in Pixels
+            const vY = { x: pPx.x - gPx.x, y: pPx.y - gPx.y };
             const lenY = Math.sqrt(vY.x * vY.x + vY.y * vY.y);
             const basisY = { x: vY.x / lenY, y: vY.y / lenY };
 
             // Project lower lip onto face vertical axis starting from upper lip
-            const dx = lowerLip.x - upperLip.x;
-            const dy = lowerLip.y - upperLip.y;
+            const dx = lPx.x - uPx.x;
+            const dy = lPx.y - uPx.y;
             const projectionScalar = (dx * basisY.x) + (dy * basisY.y);
 
-            const projectedPoint = {
-                x: upperLip.x + basisY.x * projectionScalar,
-                y: upperLip.y + basisY.y * projectionScalar
+            const projectedPointPx = {
+                x: uPx.x + basisY.x * projectionScalar,
+                y: uPx.y + basisY.y * projectionScalar
             };
 
-            drawPoint(upperLip, '#FFFFFF', 3);
-            drawPoint(lowerLip, '#FFFFFF', 3);
+            // Drawing Helpers using Pixel Coordinates directly
+            const drawPixelLine = (p1: { x: number, y: number }, p2: { x: number, y: number }, color: string, thickness: number) => {
+                ctx.strokeStyle = color;
+                ctx.lineWidth = thickness;
+                ctx.beginPath();
+                ctx.moveTo(width - p1.x, p1.y); // Mirror X manually for pixels
+                ctx.lineTo(width - p2.x, p2.y);
+                ctx.stroke();
+            };
+
+            const drawPixelPoint = (p: { x: number, y: number }, color: string, radius: number) => {
+                ctx.fillStyle = color;
+                ctx.beginPath();
+                ctx.arc(width - p.x, p.y, radius, 0, 2 * Math.PI);
+                ctx.fill();
+            };
+
+            drawPixelPoint(uPx, '#FFFFFF', 4);
+            drawPixelPoint(lPx, '#FFFFFF', 4);
 
             // Draw Axial Line (The "Precision" Line)
-            drawLine(upperLip, projectedPoint, 'rgba(255, 255, 255, 0.8)', 4);
+            drawPixelLine(uPx, projectedPointPx, '#FFFFFF', 4);
 
-            // Draw Deviation Horizontal Strut
-            drawLine(projectedPoint, lowerLip, 'rgba(255, 0, 0, 0.5)', 2);
+            // Draw Deviation Horizontal Strut (Connecting axial projection to actual center)
+            drawPixelLine(projectedPointPx, lPx, 'rgba(255, 51, 51, 0.6)', 2);
         }
 
         // 3. AR TRAJECTORY (Re-Projected)

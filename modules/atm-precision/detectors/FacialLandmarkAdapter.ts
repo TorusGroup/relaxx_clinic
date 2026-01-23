@@ -68,9 +68,9 @@ export class FacialLandmarkAdapter {
      */
     private getFilter(id: number) {
         if (!this.filters.has(id)) {
-            // Config for Precision: 1Hz cutoff, 0.005 Beta (Very smooth)
+            // Config for Precision: 0.5Hz cutoff, 0.15 Beta (Sharper response)
             const minCutoff = 0.5; // Slow drift
-            const beta = 0.05;     // Lower = More lag, less jitter. 0.05 is balanced.
+            const beta = 0.15;     // Higher = Faster response, more jitter. 0.15 is good for fast jaw cycles.
 
             this.filters.set(id, {
                 x: new OneEuroFilter(30, minCutoff, beta, 1),

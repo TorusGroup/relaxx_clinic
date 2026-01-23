@@ -50,8 +50,8 @@ export const HighPrecisionCamera: React.FC<Props> = ({ stream, onMetrics, onTraj
         const atmLandmarks = adapterRef.current.process(raw, timestamp);
         setLandmarks(atmLandmarks);
 
-        // 2. ANALYZE (Symmetry)
-        const plane = symmetryAnalyzerRef.current.calculateMidSagittalPlane(atmLandmarks);
+        // 2. ANALYZE (Symmetry within Pixel Space)
+        const plane = symmetryAnalyzerRef.current.calculateMidSagittalPlane(atmLandmarks, dims.width, dims.height);
         setSymmetryPlane(plane);
 
         // 3. MEASURE (Jaw kinematics)

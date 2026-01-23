@@ -35,19 +35,29 @@ export class JawMovementAnalyzer {
         width: number = 640,
         height: number = 480
     ): JawMetrics {
-        // --- 1. TILT NEUTRALIZATION (Swiss Watch Logic) ---
-        const lEye = landmarks.find(l => l.id === 33);
-        const rEye = landmarks.find(l => l.id === 263);
-        const nose = landmarks.find(l => l.id === 1); // Nose tip for pivot
+        // --- 1. ASPECT-AWARE PIXEL PROJECTION (Swiss Watch V2.0) ---
+        // Normalized coordinates (0-1) are distorted on non-square viewports (Mobile).
+        // We project into "Square Pixel Space" to ensure 1 unit X = 1 unit Y physically.
+        const pixelLandmarks = landmarks.map(p => ({
+            ...p,
+            x: p.x * width,
+            y: p.y * height,
+            z: p.z * width // Z is typically relative to width in MediaPipe
+        }));
+
+        const lEye = pixelLandmarks.find(l => l.id === 33);
+        const rEye = pixelLandmarks.find(l => l.id === 263);
+        const nose = pixelLandmarks.find(l => l.id === 1);
 
         let rollRad = 0;
-        let correctedLandmarks = landmarks;
+        let correctedLandmarks = pixelLandmarks;
 
         if (lEye && rEye && nose) {
+            // Calculate tilt in PIXEL space (Accurate Roll)
             rollRad = Math.atan2(rEye.y - lEye.y, rEye.x - lEye.x);
-            // Neutralize tilt by rotating everything back
-            // Preserving the 'id' property of ATMLandmark
-            correctedLandmarks = landmarks.map(p => ({
+
+            // Neutralize tilt
+            correctedLandmarks = pixelLandmarks.map(p => ({
                 ...VectorMath3D.rotatePoint(p, -rollRad, nose),
                 id: p.id
             })) as ATMLandmark[];
@@ -59,34 +69,37 @@ export class JawMovementAnalyzer {
         const cUpperLip = correctedLandmarks.find(l => l.id === 13)!;
         const cLowerLip = correctedLandmarks.find(l => l.id === 14)!;
 
-        // --- 2. SCALE CALCULATION (Smoothing usually handled by Adapter) ---
-        const ipdUnit = VectorMath3D.distance(cLEye, cREye);
-        let scaleFactor = ipdUnit > 0 ? this.REF_IPD_MM / ipdUnit : 1.0;
+        // --- 2. SCALE CALCULATION (Stable 2D IPD) ---
+        // IPD is horizontal, so it's the anchor of our "Ruler".
+        const dxIPD = cREye.x - cLEye.x;
+        const dyIPD = cREye.y - cLEye.y;
+        const ipdPixels = Math.sqrt(dxIPD * dxIPD + dyIPD * dyIPD);
 
-        // --- 3. PORTRAIT COMPENSATION (Swiss Watch Logic V20.5) ---
-        // On mobile portrait, vertical pixels are "compressed" compared to horizontal IPD.
-        let verticalBonus = 1.0;
-        if (height > width) {
-            const aspect = height / width;
-            verticalBonus = Math.min(aspect, 1.8); // Legacy compensation factor
-        }
+        // Scale Factor: how many MM per PIXEL?
+        const mmPerPixel = ipdPixels > 0 ? this.REF_IPD_MM / ipdPixels : 1.0;
 
-        // --- 4. AXIAL PROJECTION (Opening) ---
-        // Instead of raw 3D distance, we project the jaw movement onto the face's vertical axis.
-        // In Neutral Space (correctedLandmarks), the vertical axis is strictly Y.
+        // --- 3. AXIAL PROJECTION (Opening in Pixel Space) ---
         let rawOpening = 0;
         if (cUpperLip && cLowerLip) {
-            // Projected Y distance * vertical scale bonus
+            // Movement strictly along the Face's Vertical Axis
+            // Since we neutralized tilt, the vertical axis is now strictly Y+.
             const dy = (cLowerLip.y - cUpperLip.y);
-            rawOpening = dy * scaleFactor * verticalBonus;
+            rawOpening = dy * mmPerPixel;
         }
 
-        // --- 5. LATERAL DEVIATION ---
-        // Since we neutralized tilt, we can use the Symmetry Plane reliably.
+        // --- 4. LATERAL DEVIATION (Pixel Space) ---
         let rawDeviation = 0;
         if (cLowerLip && symmetryPlane) {
-            const vecToLip = VectorMath3D.vectorFromPoints(symmetryPlane.point, cLowerLip);
-            rawDeviation = VectorMath3D.dotProduct(vecToLip, symmetryPlane.normal) * scaleFactor;
+            // Convert plane point to pixel space for fair comparison
+            const planePointPx = {
+                x: symmetryPlane.point.x * width,
+                y: symmetryPlane.point.y * height,
+                z: symmetryPlane.point.z * width
+            };
+
+            const vecToLip = VectorMath3D.vectorFromPoints(planePointPx, cLowerLip);
+            // normal is unit vector, so dot product gives projected pixel distance
+            rawDeviation = VectorMath3D.dotProduct(vecToLip, symmetryPlane.normal) * mmPerPixel;
         }
 
         // 6. Velocity (Placeholder)

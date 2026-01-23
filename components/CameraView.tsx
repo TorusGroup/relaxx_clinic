@@ -116,8 +116,8 @@ const CameraView: React.FC<Props> = ({ onCameraReady, onMetricsUpdate, onTraject
         // 0. PRECISION ADAPTER (Landmark Filtering)
         const atmLandmarks = adapterRef.current.process(rawLandmarks, timestamp);
 
-        // 1. PRECISION SYMMETRY (3D Plane)
-        const plane = symmetryAnalyzerRef.current.calculateMidSagittalPlane(atmLandmarks);
+        // 1. PRECISION SYMMETRY (3D Plane - Now aspect-aware)
+        const plane = symmetryAnalyzerRef.current.calculateMidSagittalPlane(atmLandmarks, width, height);
 
         // 1. ADVANCED SMOOTHING (Legacy reference for filters if needed)
         const stabilizer = stabilizerRef.current;
@@ -168,21 +168,28 @@ const CameraView: React.FC<Props> = ({ onCameraReady, onMetricsUpdate, onTraject
             atmLandmarks.find(l => l.id === 263)!
           );
 
-          // 2. Axial Projection (Swiss Watch Drawing Logic)
-          const vY = { x: philtrum.x - glabella.x, y: philtrum.y - glabella.y };
+          // 2. Axial Projection (Swiss Watch Drawing Logic - Pixel Space Refactor)
+          const uPx = { x: upperLip.x * width, y: upperLip.y * height };
+          const lPx = { x: lowerLip.x * width, y: lowerLip.y * height };
+          const gPx = { x: glabella.x * width, y: glabella.y * height };
+          const pPx = { x: philtrum.x * width, y: philtrum.y * height };
+
+          // Basis for Vertical Axis (Glabella -> Philtrum) in Pixels
+          const vY = { x: pPx.x - gPx.x, y: pPx.y - gPx.y };
           const lenY = Math.sqrt(vY.x * vY.x + vY.y * vY.y);
           const basisY = { x: vY.x / lenY, y: vY.y / lenY };
 
-          const dx = lowerLip.x - upperLip.x;
-          const dy = lowerLip.y - upperLip.y;
+          // Project lower lip onto face vertical axis starting from upper lip
+          const dx = lPx.x - uPx.x;
+          const dy = lPx.y - uPx.y;
           const projectionScalar = (dx * basisY.x) + (dy * basisY.y);
 
           const projectedPoint = {
             id: -99,
-            x: upperLip.x + basisY.x * projectionScalar,
-            y: upperLip.y + basisY.y * projectionScalar,
+            x: (uPx.x + basisY.x * projectionScalar) / width,
+            y: (uPx.y + basisY.y * projectionScalar) / height,
             z: lowerLip.z
-          };
+          } as Landmark;
 
           visualizer.drawAxialProjection(upperLip, lowerLip, projectedPoint);
 
