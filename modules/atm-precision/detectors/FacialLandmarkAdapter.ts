@@ -69,13 +69,13 @@ export class FacialLandmarkAdapter {
      */
     private getFilter(id: number) {
         if (!this.filters.has(id)) {
-            // --- ADAPTIVE FILTERING PEAKS (Phase 4) ---
+            // --- ULTRA-RESPONSIVE FILTERING (Phase 5) ---
             const isMandibleOrLip = [13, 14, 152, 17, ...LANDMARK_INDICES.MANDIBLE_PATH].includes(id);
 
-            // 0.4 Beta for Mandible/Lips = Snappy, captures full amplitude.
-            // 0.12 Beta for Anchors = Rock solid reference axis.
-            const minCutoff = 0.05;
-            const beta = isMandibleOrLip ? 0.4 : 0.12;
+            // LIPS/MANDIBLE: minCutoff 0.3 + Beta 0.8 = Instant response + Fast convergence
+            // ANCHORS: minCutoff 0.1 + Beta 0.12 = Rock solid reference
+            const minCutoff = isMandibleOrLip ? 0.3 : 0.1;
+            const beta = isMandibleOrLip ? 0.8 : 0.12;
 
             this.filters.set(id, {
                 x: new OneEuroFilter(30, minCutoff, beta, 1),

@@ -198,13 +198,22 @@ const CameraView: React.FC<Props> = ({ onCameraReady, onMetricsUpdate, onTraject
 
           visualizer.drawAxialProjection(upperLip, lowerLip, projectedPoint);
 
-          // 3. Adaptive Smoothing for HUD
+          // 3. Adaptive Smoothing for HUD (Phase 5: Bypass in PRECISION mode)
           const useAdaptive = analysisMode === 'PRECISION';
-          const stableAmp = stabilizer.stabilizeAmplitudeAdaptive(displayMetrics.openingAmplitude, useAdaptive);
-          displayMetrics.openingAmplitude = stableAmp;
+          let finalAmplitude: number;
+
+          if (useAdaptive) {
+            // PRECISION MODE: Use raw value from JawAnalyzer (no additional dampening)
+            finalAmplitude = displayMetrics.openingAmplitude;
+          } else {
+            // STANDARD MODE: Apply legacy stabilization
+            finalAmplitude = stabilizer.stabilizeAmplitudeAdaptive(displayMetrics.openingAmplitude, false);
+          }
+
+          displayMetrics.openingAmplitude = finalAmplitude;
 
           // 4. Metrics & Status
-          visualizer.drawMetrics(upperLip, stableAmp, displayMetrics.lateralDeviation);
+          visualizer.drawMetrics(upperLip, finalAmplitude, displayMetrics.lateralDeviation);
           visualizer.drawStatusIndicators(analysisMode, analysisMode === 'PRECISION' ? lightingQuality : 'N/A');
         }
 
