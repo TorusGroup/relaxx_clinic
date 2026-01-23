@@ -1,5 +1,5 @@
-import { ATMLandmark, Plane3D } from './precision-types';
-import { VectorMath3D } from './VectorMath3D';
+import { ATMLandmark, Plane3D } from '../core/types';
+import { VectorMath3D } from '../core/VectorMath3D';
 
 /**
  * Result of a single frame jaw analysis.

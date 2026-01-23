@@ -1,6 +1,6 @@
-import { ATMLandmark, Point3D } from './precision-types';
-import { OneEuroFilter } from '../../utils/oneEuroFilter';
-import { LANDMARK_INDICES } from '../../constants';
+import { ATMLandmark, Point3D } from '../core/types';
+import { OneEuroFilter } from '../../../utils/oneEuroFilter';
+import { LANDMARK_INDICES } from '../../../constants';
 
 /**
  * Adapter to convert raw MediaPipe results into medical-grade ATMLandmark objects.
