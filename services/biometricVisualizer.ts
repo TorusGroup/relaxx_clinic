@@ -177,4 +177,23 @@ export class BiometricVisualizer {
         // SAFE ZONE BORDER
         this.ctx.strokeRect(10, 10, width - 20, height - 20);
     }
+
+    /**
+     * Draws status indicators for Analysis Mode and Lighting.
+     */
+    drawStatusIndicators(mode: 'STANDARD' | 'PRECISION', quality: string = 'GOOD') {
+        const x = 20;
+        const y = this.height - 40;
+
+        // MODE INDICATOR
+        this.ctx.font = "800 10px 'Inter', sans-serif";
+        this.ctx.fillStyle = mode === 'PRECISION' ? "#00FF66" : "rgba(255, 255, 255, 0.5)";
+        this.ctx.fillText(`MODE: ${mode}`, x, y);
+
+        // QUALITY INDICATOR
+        if (mode === 'PRECISION') {
+            this.ctx.fillStyle = quality === 'GOOD' ? "#00FF66" : quality === 'WARNING' ? "#FFAA00" : "#FF3333";
+            this.ctx.fillText(`LIGHT: ${quality}`, x, y + 15);
+        }
+    }
 }

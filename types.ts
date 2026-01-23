@@ -17,7 +17,7 @@ export interface Landmark {
   z: number;
 }
 
-export type AppState = 'ONBOARDING' | 'PERMISSION_REQUEST' | 'COUNTDOWN' | 'CALIBRATION' | 'EXERCISE' | 'LEAD_FORM' | 'REPORTING';
+export type AppState = 'ONBOARDING' | 'PERMISSION_REQUEST' | 'COUNTDOWN' | 'CALIBRATION' | 'EXERCISE' | 'LEAD_FORM' | 'REPORTING' | 'ATM_PRECISION';
 
 export interface UserData {
   name: string;

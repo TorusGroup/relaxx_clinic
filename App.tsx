@@ -12,6 +12,7 @@ import Notification from './components/Notification'; // V10.0 UI
 import { AppState, DiagnosticMetrics, TelemetryData, Landmark, UserData } from './types';
 import { generateClinicalReport } from './services/geminiService';
 import { analyzeMotion, calculateATMScore } from './services/biomechanics'; // V9.0 Biomechanics
+import { ATMAnalysisScreen } from './modules/atm-precision/views/ATMAnalysisScreen'; // V22.0 Module
 
 const BUFFER_SIZE = 5;
 const REPS_REQUIRED = 5;
@@ -398,7 +399,7 @@ function App() {
 
   return (
     <div className="relative h-screen w-full overflow-hidden bg-[#001A13]">
-      {appState === 'ONBOARDING' && <Onboarding onStart={() => setAppState('PERMISSION_REQUEST')} />}
+      {appState === 'ONBOARDING' && <Onboarding onStart={() => setAppState('PERMISSION_REQUEST')} onDevMode={() => setAppState('ATM_PRECISION')} />}
 
       {/* CAMERA ALWAYS ACTIVE in these states to prevent black screen */}
       {/* Added COUNTDOWN to this list so camera stays on behind the overlay */}
@@ -507,10 +508,15 @@ function App() {
             />
           )}
         </>
-      )
-      }
-    </div >
+      )}
+
+      {/* V22.0 NEW MODULE ROUTE */}
+      {appState === 'ATM_PRECISION' && (
+        <ATMAnalysisScreen />
+      )}
+    </div>
   );
 }
+
 
 export default App;

@@ -4,9 +4,10 @@ import logoImg from '../logo.webp';
 
 interface Props {
   onStart: () => void;
+  onDevMode?: () => void;
 }
 
-const Onboarding: React.FC<Props> = ({ onStart }) => {
+const Onboarding: React.FC<Props> = ({ onStart, onDevMode }) => {
   return (
     <div className="fixed inset-0 z-[100] overflow-y-auto bg-[#001A13] selection:bg-[#00FF66] selection:text-[#001A13]">
       <style>{`
@@ -97,10 +98,18 @@ const Onboarding: React.FC<Props> = ({ onStart }) => {
               <div className="w-1.5 h-1.5 rounded-full bg-white" />
               <span className="text-[10px] font-black tracking-[0.3em] uppercase">Clinic Lab</span>
             </div>
+
           </footer>
+
+          {/* V22.0 DEV ACCESS */}
+          <div className="absolute bottom-4 right-4 opacity-10 hover:opacity-100 transition-opacity cursor-pointer z-50">
+            <button onClick={onDevMode} className="text-[9px] font-mono text-[#00FF66] border border-[#00FF66] px-2 py-1 rounded">
+              ATM MODULE v22.0
+            </button>
+          </div>
         </div>
-      </div>
-    </div>
+      </div >
+    </div >
   );
 };
 
