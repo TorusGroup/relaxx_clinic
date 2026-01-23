@@ -26,48 +26,73 @@ export class JawMovementAnalyzer {
      * Calculates clinical jaw metrics.
      * @param landmarks Filtered ATM landmarks.
      * @param symmetryPlane The Mid-Sagittal Plane (Reference).
-     * @param timeDelta Time since last frame (seconds).
+     * @param width Canvas width (for aspect ratio/pixel logic if needed).
+     * @param height Canvas height (for aspect ratio/pixel logic if needed).
      */
-    analyze(landmarks: ATMLandmark[], symmetryPlane: Plane3D, timeDelta: number = 0.033): JawMetrics {
-        // 1. IPD Calculation (Scale Factor)
+    analyze(
+        landmarks: ATMLandmark[],
+        symmetryPlane: Plane3D,
+        width: number = 640,
+        height: number = 480
+    ): JawMetrics {
+        // --- 1. TILT NEUTRALIZATION (Swiss Watch Logic) ---
         const lEye = landmarks.find(l => l.id === 33);
         const rEye = landmarks.find(l => l.id === 263);
+        const nose = landmarks.find(l => l.id === 1); // Nose tip for pivot
 
-        let scaleFactor = 1.0; // mm per unit
+        let rollRad = 0;
+        let correctedLandmarks = landmarks;
 
-        if (lEye && rEye) {
-            const ipdUnit = VectorMath3D.distance(lEye, rEye);
-            if (ipdUnit > 0) {
-                scaleFactor = this.REF_IPD_MM / ipdUnit;
-            }
+        if (lEye && rEye && nose) {
+            rollRad = Math.atan2(rEye.y - lEye.y, rEye.x - lEye.x);
+            // Neutralize tilt by rotating everything back
+            // Preserving the 'id' property of ATMLandmark
+            correctedLandmarks = landmarks.map(p => ({
+                ...VectorMath3D.rotatePoint(p, -rollRad, nose),
+                id: p.id
+            })) as ATMLandmark[];
         }
 
-        // 2. Opening Amplitude (Vertical)
-        // We use Upper Lip Inner (13) and Lower Lip Inner (14).
-        // But we want the PROJECTED distance onto the Symmetry Plane (Vertical component only).
-        // If the head is tilted back (Pitch), raw distance is fine?
-        // Actually, simple 3D distance is usually best for "Opening", 
-        // as long as we subtract the Closed State (Tare).
+        // Re-find landmarks in corrected space
+        const cLEye = correctedLandmarks.find(l => l.id === 33)!;
+        const cREye = correctedLandmarks.find(l => l.id === 263)!;
+        const cUpperLip = correctedLandmarks.find(l => l.id === 13)!;
+        const cLowerLip = correctedLandmarks.find(l => l.id === 14)!;
 
-        const upperLip = landmarks.find(l => l.id === 13);
-        const lowerLip = landmarks.find(l => l.id === 14);
+        // --- 2. SCALE CALCULATION (Smoothing usually handled by Adapter) ---
+        const ipdUnit = VectorMath3D.distance(cLEye, cREye);
+        let scaleFactor = ipdUnit > 0 ? this.REF_IPD_MM / ipdUnit : 1.0;
 
+        // --- 3. PORTRAIT COMPENSATION (Swiss Watch Logic V20.5) ---
+        // On mobile portrait, vertical pixels are "compressed" compared to horizontal IPD.
+        let verticalBonus = 1.0;
+        if (height > width) {
+            const aspect = height / width;
+            verticalBonus = Math.min(aspect, 1.8); // Legacy compensation factor
+        }
+
+        // --- 4. AXIAL PROJECTION (Opening) ---
+        // Instead of raw 3D distance, we project the jaw movement onto the face's vertical axis.
+        // In Neutral Space (correctedLandmarks), the vertical axis is strictly Y.
         let rawOpening = 0;
-        if (upperLip && lowerLip) {
-            rawOpening = VectorMath3D.distance(upperLip, lowerLip) * scaleFactor;
+        if (cUpperLip && cLowerLip) {
+            // Projected Y distance * vertical scale bonus
+            const dy = (cLowerLip.y - cUpperLip.y);
+            rawOpening = dy * scaleFactor * verticalBonus;
         }
 
-        // 3. Lateral Deviation
+        // --- 5. LATERAL DEVIATION ---
+        // Since we neutralized tilt, we can use the Symmetry Plane reliably.
         let rawDeviation = 0;
-        if (lowerLip && symmetryPlane) {
-            const vecToLip = VectorMath3D.vectorFromPoints(symmetryPlane.point, lowerLip);
+        if (cLowerLip && symmetryPlane) {
+            const vecToLip = VectorMath3D.vectorFromPoints(symmetryPlane.point, cLowerLip);
             rawDeviation = VectorMath3D.dotProduct(vecToLip, symmetryPlane.normal) * scaleFactor;
         }
 
-        // 4. Velocity
-        const velocity = 0; // Placeholder
+        // 6. Velocity (Placeholder)
+        const velocity = 0;
 
-        // Apply "Closed Mouth" Threshold (User request: < 5mm => 0)
+        // Apply "Closed Mouth" Threshold (< 5mm => 0)
         const openingMM = rawOpening < 5.0 ? 0 : rawOpening;
         const deviationMM = rawOpening < 5.0 ? 0 : rawDeviation;
 

@@ -5,9 +5,6 @@ interface Props {
     landmarks: ATMLandmark[];
     symmetryPlane: Plane3D | null;
     width: number;
-    landmarks: ATMLandmark[];
-    symmetryPlane: Plane3D | null;
-    width: number;
     height: number;
     trajectory?: { dev: number, open: number }[]; // History in MM
 }
@@ -88,14 +85,36 @@ export const VectorOverlay: React.FC<Props> = ({ landmarks, symmetryPlane, width
             }
         }
 
-        // 2. Draw Jaw Vector (Opening)
+        // 2. Draw Jaw Vector (Axial Opening)
         const upperLip = landmarks.find(l => l.id === 13);
         const lowerLip = landmarks.find(l => l.id === 14);
+        const glabella = landmarks.find(l => l.id === 10);
+        const philtrum = landmarks.find(l => l.id === 0);
 
-        if (upperLip && lowerLip) {
+        if (upperLip && lowerLip && glabella && philtrum) {
+            // Basis for Vertical Axis (Glabella -> Philtrum)
+            const vY = { x: philtrum.x - glabella.x, y: philtrum.y - glabella.y };
+            const lenY = Math.sqrt(vY.x * vY.x + vY.y * vY.y);
+            const basisY = { x: vY.x / lenY, y: vY.y / lenY };
+
+            // Project lower lip onto face vertical axis starting from upper lip
+            const dx = lowerLip.x - upperLip.x;
+            const dy = lowerLip.y - upperLip.y;
+            const projectionScalar = (dx * basisY.x) + (dy * basisY.y);
+
+            const projectedPoint = {
+                x: upperLip.x + basisY.x * projectionScalar,
+                y: upperLip.y + basisY.y * projectionScalar
+            };
+
             drawPoint(upperLip, '#FFFFFF', 3);
             drawPoint(lowerLip, '#FFFFFF', 3);
-            drawLine(upperLip, lowerLip, 'rgba(255, 255, 255, 0.5)', 4);
+
+            // Draw Axial Line (The "Precision" Line)
+            drawLine(upperLip, projectedPoint, 'rgba(255, 255, 255, 0.8)', 4);
+
+            // Draw Deviation Horizontal Strut
+            drawLine(projectedPoint, lowerLip, 'rgba(255, 0, 0, 0.5)', 2);
         }
 
         // 3. AR TRAJECTORY (Re-Projected)

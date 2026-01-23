@@ -56,7 +56,7 @@ export const HighPrecisionCamera: React.FC<Props> = ({ stream, onMetrics, onTraj
 
         // 3. MEASURE (Jaw kinematics)
         if (plane) {
-            const jaws = jawAnalyzerRef.current.analyze(atmLandmarks, plane);
+            const jaws = jawAnalyzerRef.current.analyze(atmLandmarks, plane, dims.width, dims.height);
             setMetrics(jaws);
 
             // 4. TRAJECTORY BUFFER & AUTO-RESET

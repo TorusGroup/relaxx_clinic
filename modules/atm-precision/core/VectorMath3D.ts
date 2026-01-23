@@ -95,4 +95,34 @@ export class VectorMath3D {
     static toPoint3D(p: { x: number, y: number, z?: number }): Point3D {
         return { x: p.x, y: p.y, z: p.z || 0 };
     }
+
+    /**
+     * Rotates a 3D point around a center on the XY plane.
+     */
+    static rotatePoint(point: Point3D, angleRad: number, center: Point3D): Point3D {
+        const cos = Math.cos(angleRad);
+        const sin = Math.sin(angleRad);
+        const dx = point.x - center.x;
+        const dy = point.y - center.y;
+
+        return {
+            x: center.x + (dx * cos - dy * sin),
+            y: center.y + (dx * sin + dy * cos),
+            z: point.z
+        };
+    }
+
+    /**
+     * Projects a point (p2) onto an axis defined by an origin (p1) and an angle.
+     */
+    static projectScalar(p1: Point3D, p2: Point3D, angleRad: number): number {
+        const dx = p2.x - p1.x;
+        const dy = p2.y - p1.y;
+
+        // Axis unit vector
+        const ux = Math.cos(angleRad);
+        const uy = Math.sin(angleRad);
+
+        return (dx * ux) + (dy * uy);
+    }
 }
