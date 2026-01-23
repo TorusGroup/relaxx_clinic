@@ -39,6 +39,7 @@ export const HighPrecisionCamera: React.FC<Props> = ({ stream, onMetrics, onTraj
     const [trajectory, setTrajectory] = useState<{ dev: number, open: number }[]>([]); // AR History
 
     const [dims, setDims] = useState({ width: 0, height: 0 });
+    const lastOpenTimeRef = useRef<number>(0);
 
     const onResults = useCallback((results: any) => {
         if (!results.multiFaceLandmarks || results.multiFaceLandmarks.length === 0) return;
@@ -59,27 +60,25 @@ export const HighPrecisionCamera: React.FC<Props> = ({ stream, onMetrics, onTraj
             const jaws = jawAnalyzerRef.current.analyze(atmLandmarks, plane, dims.width, dims.height);
             setMetrics(jaws);
 
-            // 4. TRAJECTORY BUFFER & AUTO-RESET
+            // 4. TRAJECTORY BUFFER & AUTO-RESET (Dampened)
             setTrajectory(prev => {
-                // If mouth just closed (or is closed), and we have a trail, reset it.
-                // Reset condition: metrics say NOT isOpen, but we have points.
-                if (!jaws.isOpen) {
-                    if (prev.length > 0) {
+                const now = Date.now();
+                if (jaws.isOpen) {
+                    lastOpenTimeRef.current = now;
+                    // Add new point
+                    const newPoint = { dev: jaws.deviationMM, open: jaws.openingMM };
+                    const next = [...prev, newPoint];
+                    if (next.length > 300) next.shift(); // 10s history
+                    if (onTrajectoryUpdate) onTrajectoryUpdate(next);
+                    return next;
+                } else {
+                    // Closed mouth: Only reset if stable for 500ms
+                    if (prev.length > 0 && (now - lastOpenTimeRef.current > 500)) {
                         if (onTrajectoryUpdate) onTrajectoryUpdate([]);
                         return [];
                     }
                     return prev;
                 }
-
-                // Add new point
-                const newPoint = { dev: jaws.deviationMM, open: jaws.openingMM };
-                const next = [...prev, newPoint];
-
-                // Limit buffer (e.g. 300 frames ~ 5s)
-                if (next.length > 300) next.shift();
-
-                if (onTrajectoryUpdate) onTrajectoryUpdate(next);
-                return next;
             });
 
             if (onMetrics) onMetrics(jaws);
