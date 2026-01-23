@@ -26,7 +26,8 @@ export class FacialLandmarkAdapter {
         // (Eyes, Jaw, Lips, Nose, Forehead)
         const relevantIndices = [
             ...LANDMARK_INDICES.MANDIBLE_PATH,
-            33, 263, // Eyes (Left, Right)
+            33, 263, // Eyes (Corners - Fallback)
+            468, 473, // Iris Centers (Medical Ruler)
             1,       // Nose Tip
             168,     // Nose Bridge (Symmetry Anchor)
             0,       // Upper Lip Center (Philtrum Anchor)
@@ -68,9 +69,9 @@ export class FacialLandmarkAdapter {
      */
     private getFilter(id: number) {
         if (!this.filters.has(id)) {
-            // Config for Precision: 0.1Hz cutoff, 0.08 Beta (Optimal balance)
-            const minCutoff = 0.1; // Slower drift for static stability
-            const beta = 0.08;     // 0.08 = Stable but responsive. 0.15 was too noisy on mobile.
+            // Config for Precision: 0.1Hz cutoff, 0.12 Beta (Medical Precision Tuning)
+            const minCutoff = 0.1;
+            const beta = 0.12;     // 0.12 = Responsive enough for fast jaw movement, stable for static metrics.
 
             this.filters.set(id, {
                 x: new OneEuroFilter(30, minCutoff, beta, 1),

@@ -43,13 +43,18 @@ export class SymmetryAnalyzer {
 
         const verticalVec = VectorMath3D.vectorFromPoints(glabella, philtrum);
 
-        const lEye = pixelLandmarks.find(l => l.id === 33);
-        const rEye = pixelLandmarks.find(l => l.id === 263);
+        const lIris = pixelLandmarks.find(l => l.id === 468);
+        const rIris = pixelLandmarks.find(l => l.id === 473);
+        const lEyeFallback = pixelLandmarks.find(l => l.id === 33);
+        const rEyeFallback = pixelLandmarks.find(l => l.id === 263);
 
         let visualNormal: Vector3D;
 
-        if (lEye && rEye) {
-            const eyeVec = VectorMath3D.vectorFromPoints(lEye, rEye);
+        const lReference = lIris || lEyeFallback;
+        const rReference = rIris || rEyeFallback;
+
+        if (lReference && rReference) {
+            const eyeVec = VectorMath3D.vectorFromPoints(lReference, rReference);
             const zAxis = VectorMath3D.crossProduct(eyeVec, verticalVec);
             visualNormal = VectorMath3D.crossProduct(verticalVec, zAxis);
             visualNormal = VectorMath3D.normalize(visualNormal);

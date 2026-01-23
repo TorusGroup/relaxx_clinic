@@ -56,15 +56,27 @@ export class JawMovementAnalyzer {
             })) as ATMLandmark[];
         }
 
-        const cLEye = correctedLandmarks.find(l => l.id === 33)!;
-        const cREye = correctedLandmarks.find(l => l.id === 263)!;
+        const lIris = correctedLandmarks.find(l => l.id === 468);
+        const rIris = correctedLandmarks.find(l => l.id === 473);
+        const lEyeFallback = correctedLandmarks.find(l => l.id === 33)!;
+        const rEyeFallback = correctedLandmarks.find(l => l.id === 263)!;
+
         const cUpperLip = correctedLandmarks.find(l => l.id === 13)!;
         const cLowerLip = correctedLandmarks.find(l => l.id === 14)!;
 
-        // --- 2. DAMPENED SCALE CALCULATION (Swiss Watch V23.0) ---
-        const dxIPD = cREye.x - cLEye.x;
-        const dyIPD = cREye.y - cLEye.y;
-        const ipdPixels = Math.sqrt(dxIPD * dxIPD + dyIPD * dyIPD);
+        // --- 2. DAMPENED SCALE CALCULATION (Swiss Watch V23.1 - Iris Scale) ---
+        // We use Iris dist (468/473) as the reference for 64mm.
+        // If irises missing, fallback to corners (33/263) with compensation factor.
+        let ipdPixels = 0;
+        if (lIris && rIris) {
+            const dx = rIris.x - lIris.x;
+            const dy = rIris.y - lIris.y;
+            ipdPixels = Math.sqrt(dx * dx + dy * dy);
+        } else {
+            const dx = rEyeFallback.x - lEyeFallback.x;
+            const dy = rEyeFallback.y - lEyeFallback.y;
+            ipdPixels = Math.sqrt(dx * dx + dy * dy) / 1.45;
+        }
 
         const currentMMPerPixel = ipdPixels > 0 ? this.REF_IPD_MM / ipdPixels : 1.0;
 
@@ -72,7 +84,6 @@ export class JawMovementAnalyzer {
         this.mmPerPixelBuffer.push(currentMMPerPixel);
         if (this.mmPerPixelBuffer.length > this.BUFFER_SIZE) this.mmPerPixelBuffer.shift();
 
-        // Select Median to ignore outliers
         const sorted = [...this.mmPerPixelBuffer].sort((a, b) => a - b);
         const mmPerPixel = sorted[Math.floor(sorted.length / 2)];
 
@@ -93,11 +104,11 @@ export class JawMovementAnalyzer {
             rawDeviation = VectorMath3D.dotProduct(vecToLip, symmetryPlane.normal) * mmPerPixel;
         }
 
-        // --- 5. HYSTERESIS STATE (Prevent early graph reset) ---
-        // Open Threshold: 6mm | Close Threshold: 3mm
-        const openingMM = rawOpening < 3.0 ? 0 : rawOpening;
-        const deviationMM = rawOpening < 3.0 ? 0 : rawDeviation;
-        const isOpen = rawOpening > 6.0;
+        // --- 5. HYSTERESIS STATE (Swiss Stabilization V2.5) ---
+        // Open Threshold: 5mm | Close Threshold: 2.5mm
+        const openingMM = rawOpening < 2.5 ? 0 : rawOpening;
+        const deviationMM = rawOpening < 2.5 ? 0 : rawDeviation;
+        const isOpen = rawOpening > 5.0;
 
         return {
             openingMM,

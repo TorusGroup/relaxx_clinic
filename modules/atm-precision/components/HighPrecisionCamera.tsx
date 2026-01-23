@@ -72,8 +72,8 @@ export const HighPrecisionCamera: React.FC<Props> = ({ stream, onMetrics, onTraj
                     if (onTrajectoryUpdate) onTrajectoryUpdate(next);
                     return next;
                 } else {
-                    // Closed mouth: Only reset if stable for 500ms
-                    if (prev.length > 0 && (now - lastOpenTimeRef.current > 500)) {
+                    // Closed mouth: Only reset if stable for 1200ms
+                    if (prev.length > 0 && (now - lastOpenTimeRef.current > 1200)) {
                         if (onTrajectoryUpdate) onTrajectoryUpdate([]);
                         return [];
                     }

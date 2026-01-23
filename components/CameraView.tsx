@@ -162,10 +162,15 @@ const CameraView: React.FC<Props> = ({ onCameraReady, onMetricsUpdate, onTraject
         const lowerLip = atmLandmarks.find(l => l.id === 14);
 
         if (glabella && philtrum && upperLip && lowerLip && plane) {
-          // 1. Reference Axis (Green Midline)
+          // 1. Reference Axis (Green Midline - Iris Support)
+          const lIris = atmLandmarks.find(l => l.id === 468);
+          const rIris = atmLandmarks.find(l => l.id === 473);
+          const lEyeFallback = atmLandmarks.find(l => l.id === 33);
+          const rEyeFallback = atmLandmarks.find(l => l.id === 263);
+
           visualizer.drawReferenceAxis(
-            atmLandmarks.find(l => l.id === 33)!,
-            atmLandmarks.find(l => l.id === 263)!
+            (lIris || lEyeFallback)!,
+            (rIris || rEyeFallback)!
           );
 
           // 2. Axial Projection (Swiss Watch Drawing Logic - Pixel Space Refactor)
