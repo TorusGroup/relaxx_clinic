@@ -69,9 +69,13 @@ export class FacialLandmarkAdapter {
      */
     private getFilter(id: number) {
         if (!this.filters.has(id)) {
-            // Config for Precision: 0.1Hz cutoff, 0.12 Beta (Medical Precision Tuning)
-            const minCutoff = 0.1;
-            const beta = 0.12;     // 0.12 = Responsive enough for fast jaw movement, stable for static metrics.
+            // --- ADAPTIVE FILTERING PEAKS (Phase 4) ---
+            const isMandibleOrLip = [13, 14, 152, 17, ...LANDMARK_INDICES.MANDIBLE_PATH].includes(id);
+
+            // 0.4 Beta for Mandible/Lips = Snappy, captures full amplitude.
+            // 0.12 Beta for Anchors = Rock solid reference axis.
+            const minCutoff = 0.05;
+            const beta = isMandibleOrLip ? 0.4 : 0.12;
 
             this.filters.set(id, {
                 x: new OneEuroFilter(30, minCutoff, beta, 1),

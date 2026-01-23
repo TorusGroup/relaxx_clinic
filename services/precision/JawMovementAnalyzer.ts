@@ -20,9 +20,9 @@ export class JawMovementAnalyzer {
     // Calibration: Average IPD is 64mm.
     private readonly REF_IPD_MM = 64.0;
 
-    // V23.0 Stability: Rolling Buffer for the IPD Ruler
+    // V24.0 Stability: Responsive Rolling Buffer (Phase 4)
     private mmPerPixelBuffer: number[] = [];
-    private readonly BUFFER_SIZE = 60; // 2 seconds at 30fps
+    private readonly BUFFER_SIZE = 15; // 0.5s at 30fps (Fast enough to track patient leaning in)
 
     /**
      * Calculates clinical jaw metrics.
@@ -71,11 +71,13 @@ export class JawMovementAnalyzer {
         if (lIris && rIris) {
             const dx = rIris.x - lIris.x;
             const dy = rIris.y - lIris.y;
-            ipdPixels = Math.sqrt(dx * dx + dy * dy);
+            const dz = rIris.z - lIris.z;
+            ipdPixels = Math.sqrt(dx * dx + dy * dy + dz * dz);
         } else {
             const dx = rEyeFallback.x - lEyeFallback.x;
             const dy = rEyeFallback.y - lEyeFallback.y;
-            ipdPixels = Math.sqrt(dx * dx + dy * dy) / 1.45;
+            const dz = rEyeFallback.z - lEyeFallback.z;
+            ipdPixels = Math.sqrt(dx * dx + dy * dy + dz * dz) / 1.45;
         }
 
         const currentMMPerPixel = ipdPixels > 0 ? this.REF_IPD_MM / ipdPixels : 1.0;
@@ -87,11 +89,14 @@ export class JawMovementAnalyzer {
         const sorted = [...this.mmPerPixelBuffer].sort((a, b) => a - b);
         const mmPerPixel = sorted[Math.floor(sorted.length / 2)];
 
-        // --- 3. AXIAL PROJECTION (Opening) ---
+        // --- 3. 3D EUCLIDEAN OPENING (Phase 4 - No Projection Loss) ---
         let rawOpening = 0;
         if (cUpperLip && cLowerLip) {
-            const dy = (cLowerLip.y - cUpperLip.y);
-            rawOpening = dy * mmPerPixel;
+            const dx = cLowerLip.x - cUpperLip.x;
+            const dy = cLowerLip.y - cUpperLip.y;
+            const dz = cLowerLip.z - cUpperLip.z;
+            // Euclidean distance in pixel space captures the full magnitude of the jaw arc
+            rawOpening = Math.sqrt(dx * dx + dy * dy + dz * dz) * mmPerPixel;
         }
 
         // --- 4. LATERAL DEVIATION ---
@@ -104,10 +109,10 @@ export class JawMovementAnalyzer {
             rawDeviation = VectorMath3D.dotProduct(vecToLip, symmetryPlane.normal) * mmPerPixel;
         }
 
-        // --- 5. HYSTERESIS STATE (Swiss Stabilization V2.5) ---
-        // Open Threshold: 5mm | Close Threshold: 2.5mm
-        const openingMM = rawOpening < 2.5 ? 0 : rawOpening;
-        const deviationMM = rawOpening < 2.5 ? 0 : rawDeviation;
+        // --- 5. HYSTERESIS STATE (Swiss Stabilization V2.6) ---
+        // Open Threshold: 5mm | Close Threshold: 2.0mm
+        const openingMM = rawOpening < 2.0 ? 0 : rawOpening;
+        const deviationMM = rawOpening < 2.0 ? 0 : rawDeviation;
         const isOpen = rawOpening > 5.0;
 
         return {
