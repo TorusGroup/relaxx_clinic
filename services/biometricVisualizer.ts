@@ -107,18 +107,18 @@ export class BiometricVisualizer {
     }
 
     /**
-     * Draws the V19 Axial Projection visualization (White Line + Red Strut).
+     * Draws the Direct 3D Opening visualization (Phase 6: Direct Visual Feedback).
+     * White line now goes directly to the actual lower lip position.
      */
     drawAxialProjection(upperLip: Landmark, lowerLip: Landmark, projectedPoint: Landmark) {
-        // DRAW AXIAL AMPLITUDE LINE
-        this.drawLine(upperLip, projectedPoint, '#FFFFFF', 1.0);
+        // PHASE 6: DRAW DIRECT 3D LINE (White line to actual lower lip)
+        this.drawLine(upperLip, lowerLip, '#FFFFFF', 1.0);
         this.drawPoint(upperLip, 2, '#FFFFFF');
-        this.drawPoint(projectedPoint, 2, '#FFFFFF');
+        this.drawPoint(lowerLip, 2, '#FFFFFF');
 
-        // DRAW DEVIATION STRUT (Connecting axial projection to actual center)
-        // V20.6: Subtle Deviation Line to reduce visual clutter
-        this.drawLine(projectedPoint, lowerLip, '#FF3333', 0.4, 1.5);
-        this.drawPoint(lowerLip, 2, '#FF3333');
+        // Optional: Keep projection visualization for clinical reference (very subtle)
+        // this.drawLine(upperLip, projectedPoint, '#00FF66', 0.2, 1);
+        // this.drawPoint(projectedPoint, 1, '#00FF66');
     }
 
     /**

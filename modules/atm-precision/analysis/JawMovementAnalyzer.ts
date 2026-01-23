@@ -24,6 +24,12 @@ export class JawMovementAnalyzer {
     private mmPerPixelBuffer: number[] = [];
     private readonly BUFFER_SIZE = 15; // 0.5s at 30fps (Fast enough to track patient leaning in)
 
+    // V25.0 Phase 7: Peak-Hold Filter (Captures true maximum, prevents line retraction)
+    private peakOpening: number = 0;
+    private peakTimestamp: number = 0;
+    private readonly PEAK_HOLD_DURATION = 2000; // 2 seconds
+    private readonly PEAK_DECAY_RATE = 0.98; // 2% decay per frame after timeout
+
     /**
      * Calculates clinical jaw metrics.
      */
@@ -109,9 +115,31 @@ export class JawMovementAnalyzer {
             rawDeviation = VectorMath3D.dotProduct(vecToLip, symmetryPlane.normal) * mmPerPixel;
         }
 
-        // --- 5. HYSTERESIS STATE (Swiss Stabilization V2.6) ---
+        // --- 5. PEAK-HOLD FILTER (Phase 7: Capture True Maximum) ---
+        const now = Date.now();
+
+        if (rawOpening > this.peakOpening) {
+            // New peak detected - lock it in
+            this.peakOpening = rawOpening;
+            this.peakTimestamp = now;
+        } else if (now - this.peakTimestamp > this.PEAK_HOLD_DURATION) {
+            // After 2s without new peak, gradual decay
+            this.peakOpening = Math.max(rawOpening, this.peakOpening * this.PEAK_DECAY_RATE);
+        }
+
+        // Use peak value if within hold duration
+        const displayOpening = (now - this.peakTimestamp < this.PEAK_HOLD_DURATION)
+            ? this.peakOpening
+            : rawOpening;
+
+        // Reset peak when mouth closes
+        if (rawOpening < 5.0) {
+            this.peakOpening = 0;
+        }
+
+        // --- 6. HYSTERESIS STATE (Swiss Stabilization V2.6) ---
         // Open Threshold: 5mm | Close Threshold: 2.0mm
-        const openingMM = rawOpening < 2.0 ? 0 : rawOpening;
+        const openingMM = displayOpening < 2.0 ? 0 : displayOpening;
         const deviationMM = rawOpening < 2.0 ? 0 : rawDeviation;
         const isOpen = rawOpening > 5.0;
 
