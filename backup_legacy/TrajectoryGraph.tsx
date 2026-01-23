@@ -42,29 +42,15 @@ const TrajectoryGraph: React.FC<Props> = ({ path, width = 80, height = 400 }) =>
 
         if (path.length === 0) return;
 
-        // V22.0 PRECISION SCALE: Millimeter Space
-        // Data is now in MM (Dev: -20 to 20, Open: 0 to 60)
-        const MAX_DEV = 20;
-        const MAX_OPEN = 60;
+        // V20.6 ZOOM: Pixel Space Scale
+        // Reduced from 8000x (Normalized) to 2.5x (Pixels)
+        // This ensures the graph fills the canvas even on Mobile
+        const SCALE_X = 2.5;
+        const SCALE_Y = 2.5;
 
-        const SCALE_X = (width / 2) / MAX_DEV;
-        const SCALE_Y = height / MAX_OPEN;
-
+        const startP = path[0];
         const originX = width / 2;
-        const originY = 10; // Small margin at top
-
-        // Sub-Grid (Every 10mm)
-        ctx.strokeStyle = 'rgba(0, 255, 102, 0.05)';
-        ctx.setLineDash([2, 4]);
-        for (let mm = 10; mm <= MAX_OPEN; mm += 10) {
-            const y = originY + mm * SCALE_Y;
-            ctx.beginPath();
-            ctx.moveTo(0, y); ctx.lineTo(width, y);
-            ctx.stroke();
-        }
-        ctx.setLineDash([]);
-
-        if (path.length === 0) return;
+        const originY = 20;
 
         ctx.beginPath();
         ctx.strokeStyle = '#00FF66';
@@ -76,18 +62,19 @@ const TrajectoryGraph: React.FC<Props> = ({ path, width = 80, height = 400 }) =>
 
         ctx.moveTo(originX, originY);
 
-        for (let i = 0; i < path.length; i++) {
+        for (let i = 1; i < path.length; i++) {
             const p = path[i];
-            const dx = p.x * SCALE_X;
-            const dy = p.y * SCALE_Y;
+            const dx = (p.x - startP.x) * SCALE_X;
+            const dy = Math.abs(p.y - startP.y) * SCALE_Y;
             ctx.lineTo(originX + dx, originY + dy);
         }
         ctx.stroke();
 
         // Draw Head
         const last = path[path.length - 1];
-        const dx = last.x * SCALE_X;
-        const dy = last.y * SCALE_Y;
+        const first = path[0];
+        const dx = (last.x - first.x) * SCALE_X;
+        const dy = Math.abs(last.y - first.y) * SCALE_Y;
 
         ctx.fillStyle = '#FFFFFF';
         ctx.beginPath();

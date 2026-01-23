@@ -308,7 +308,7 @@ function App() {
         if (prev.length > 0) {
           const last = prev[prev.length - 1];
           const dist = Math.sqrt(Math.pow(vector.x - last.x, 2) + Math.pow(vector.y - last.y, 2));
-          if (dist < 0.5) return prev; // Filter out < 0.5mm movements (Clean noise)
+          if (dist < 0.001) return prev; // Filter out < 1mm (approx) movements
 
           // V9.0 BIOMECHANICS: Click/Pop Detection
           // Analyze velocity between last point and current point
