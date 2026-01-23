@@ -49,37 +49,42 @@ export const VectorOverlay: React.FC<Props> = ({ landmarks, symmetryPlane, width
         // 0. CLEAN UI (Debug landmarks removed for production-readiness)
 
 
-        // 1. Draw Symmetry Plane (Midline)
+        // 1. Draw Symmetry Plane (Midline in Pixel Space)
         if (symmetryPlane) {
-            const top = symmetryPlane.point; // MidEye usually
-            // We need a direction. The plane normal is Left/Right.
-            // We want to draw the Vertical intersection of the plane.
-            // Which is defined by the vertical vector we used to build it?
-            // Let's assume vertical down.
-
-            // To be precise: We project a point far down "along the plane".
-            // For visualization, Glabella -> Philtrum is the reference line.
-
             const glabella = landmarks.find(l => l.id === 10);
             const philtrum = landmarks.find(l => l.id === 0);
 
             if (glabella && philtrum) {
-                // Extended line
-                // Vector G->P
-                const dx = philtrum.x - glabella.x;
-                const dy = philtrum.y - glabella.y;
+                // Project into Pixel Space (Crucial for correct 9:16 rotation)
+                const gPx = { x: glabella.x * width, y: glabella.y * height };
+                const pPx = { x: philtrum.x * width, y: philtrum.y * height };
 
-                const factor = 100; // Extend far
-                const endPoint = {
-                    x: glabella.x + dx * factor,
-                    y: glabella.y + dy * factor
+                // Vector G->P in pixels
+                const dxPx = pPx.x - gPx.x;
+                const dyPx = pPx.y - gPx.y;
+
+                // For drawing a long line, we extend the pixel vector
+                const factor = 10;
+                const endPointPx = {
+                    x: gPx.x + dxPx * factor,
+                    y: gPx.y + dyPx * factor
                 };
-                const startPoint = {
-                    x: glabella.x - dx * 10,
-                    y: glabella.y - dy * 10
+                const startPointPx = {
+                    x: gPx.x - dxPx * 5,
+                    y: gPx.y - dyPx * 5
                 };
 
-                drawLine(startPoint, endPoint, '#00FF66', 2); // Green Midline
+                // Internal Pixel drawing helper (Mirrored)
+                const drawPixelLine = (p1: { x: number, y: number }, p2: { x: number, y: number }, color: string, thickness: number) => {
+                    ctx.strokeStyle = color;
+                    ctx.lineWidth = thickness;
+                    ctx.beginPath();
+                    ctx.moveTo(width - p1.x, p1.y);
+                    ctx.lineTo(width - p2.x, p2.y);
+                    ctx.stroke();
+                };
+
+                drawPixelLine(startPointPx, endPointPx, '#00FF66', 2); // Green Midline
             }
         }
 

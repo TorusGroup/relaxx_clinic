@@ -76,18 +76,28 @@ export class BiometricVisualizer {
      * Visualizes the Clinical Reference Axis (Green Midline).
      */
     drawReferenceAxis(lEye: Landmark, rEye: Landmark) {
-        const eyeAngle = calculateRollAngle(lEye, rEye);
-        const midlineLen = 0.25; // Constant length down
+        // --- ASPECT-AWARE TILT CALCULATION ---
+        // Project landmarks into Pixel Space for accurate angle math
+        const lPx = { x: lEye.x * this.width, y: lEye.y * this.height };
+        const rPx = { x: rEye.x * this.width, y: rEye.y * this.height };
+
+        // Calculate roll in Pixel Space (Corrects for Mobile 9:16 stretch)
+        const eyeAnglePx = Math.atan2(rPx.y - lPx.y, rPx.x - lPx.x);
+
+        const midlineLen = 0.25; // Constant length down (units)
         const midEye: Landmark = {
             x: (lEye.x + rEye.x) / 2,
             y: (lEye.y + rEye.y) / 2,
             z: (lEye.z + rEye.z) / 2
         };
 
-        // Project midline perpendicular to eye angle (eyeAngle + 90deg)
-        const perpAngle = eyeAngle + Math.PI / 2;
+        // Project midline perpendicular to corrected eye angle
+        const perpAngle = eyeAnglePx + Math.PI / 2;
+
+        // Final position in Normalized space for drawLine
+        // We use Aspect-Matching multipliers to ensure the line is truly perpendicular in visual pixels
         const midlineEnd: Landmark = {
-            x: midEye.x + Math.cos(perpAngle) * midlineLen,
+            x: midEye.x + (Math.cos(perpAngle) * midlineLen) * (this.height / this.width),
             y: midEye.y + Math.sin(perpAngle) * midlineLen,
             z: midEye.z
         };
